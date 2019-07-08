@@ -6,12 +6,14 @@
 
 import logging
 import sys
+from . import pipeline_thread
 
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
 
+@pipeline_thread.runs_on_pipeline_thread
 def run_ops_in_serial(stage, *args, **kwargs):
     """
     Run the operations passed in *args in a serial manner, such that each operation waits for the
@@ -57,9 +59,11 @@ def run_ops_in_serial(stage, *args, **kwargs):
     if not callback:
         raise TypeError("callback is required")
 
+    @pipeline_thread.runs_on_pipeline_thread
     def on_last_op_done(last_op):
         if finally_op:
 
+            @pipeline_thread.runs_on_pipeline_thread
             def on_finally_done(finally_op):
                 logger.info(
                     "{}({}):run_ops_serial: finally_op done.".format(stage.name, finally_op.name)
@@ -109,6 +113,7 @@ def run_ops_in_serial(stage, *args, **kwargs):
                 )
                 stage.pipeline_root.unhandled_error_handler(e)
 
+    @pipeline_thread.runs_on_pipeline_thread
     def on_op_done(completed_op):
         logger.info(
             "{}({}):run_ops_serial: completed. {} items left".format(
@@ -146,6 +151,7 @@ def run_ops_in_serial(stage, *args, **kwargs):
     pass_op_to_next_stage(stage, first_op)
 
 
+@pipeline_thread.runs_on_pipeline_thread
 def delegate_to_different_op(stage, original_op, new_op):
     """
     Continue an operation using a new operation.  This means that the new operation
@@ -182,6 +188,7 @@ def delegate_to_different_op(stage, original_op, new_op):
 
     logger.info("{}({}): continuing with {} op".format(stage.name, original_op.name, new_op.name))
 
+    @pipeline_thread.runs_on_pipeline_thread
     def new_op_complete(op):
         logger.info(
             "{}({}): completing with result from {}".format(
@@ -195,6 +202,7 @@ def delegate_to_different_op(stage, original_op, new_op):
     pass_op_to_next_stage(stage, new_op)
 
 
+@pipeline_thread.runs_on_pipeline_thread
 def pass_op_to_next_stage(stage, op):
     """
     Helper function to continue a given operation by passing it to the next stage
@@ -220,6 +228,7 @@ def pass_op_to_next_stage(stage, op):
         stage.next.run_op(op)
 
 
+@pipeline_thread.runs_on_pipeline_thread
 def complete_op(stage, op):
     """
     Helper function to complete an operation by calling its callback function thus
@@ -243,6 +252,7 @@ def complete_op(stage, op):
         stage.pipeline_root.unhandled_error_handler(e)
 
 
+@pipeline_thread.runs_on_pipeline_thread
 def pass_event_to_previous_stage(stage, event):
     """
     Helper function to pass an event to the previous stage of the pipeline.  This is the default

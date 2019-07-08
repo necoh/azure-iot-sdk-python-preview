@@ -6,6 +6,7 @@
 import logging
 import pytest
 from azure.iot.device.common.pipeline import (
+    pipeline_thread,
     pipeline_stages_base,
     pipeline_ops_base,
     pipeline_events_base,
@@ -24,6 +25,16 @@ from tests.common.pipeline.helpers import (
 )
 
 logging.basicConfig(level=logging.INFO)
+
+
+# This fixture makes it look like all test in this file  tests are running
+# inside the pipeline thread.  Because this is an autouse fixture, we
+# manually add it to the individual test.py files that need it.  If,
+# instead, we had added it to some conftest.py, it would be applied to
+# every tests in every file and we don't want that.
+@pytest.fixture(autouse=True)
+def apply_fake_pipeline_thread(fake_pipeline_thread):
+    pass
 
 
 class MockPipelineStage(pipeline_stages_base.PipelineStage):
