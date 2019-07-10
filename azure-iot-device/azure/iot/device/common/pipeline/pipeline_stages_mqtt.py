@@ -41,8 +41,9 @@ class MQTTClientStage(PipelineStage):
                 username=self.username,
                 ca_cert=self.ca_cert,
             )
-            self.transport.on_mqtt_connected = self.on_connected
-            self.transport.on_mqtt_disconnected = self.on_disconnected
+            self.transport.on_mqtt_connected = self._on_unexpected_connection
+            self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failed
+            self.transport.on_mqtt_disconnected = self._on_unexpected_disconnection
             self.transport.on_mqtt_message_received = self._on_message_received
             self.pipeline_root.transport = self.transport
             operation_flow.complete_op(self, op)
@@ -64,8 +65,20 @@ class MQTTClientStage(PipelineStage):
 
             def on_connected():
                 logger.info("{}({}): on_connected.  completing op.".format(self.name, op.name))
-                self.transport.on_mqtt_connected = self.on_connected
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 self.on_connected()
+                operation_flow.complete_op(self, op)
+
+            def on_connection_failure(cause):
+                logger.info(
+                    "{}({}): on_connection_failure.  error={}.  completing op.".format(
+                        self.name, op.name, cause
+                    )
+                )
+                op.error = cause
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 operation_flow.complete_op(self, op)
 
             # A note on exceptions handling in Connect, Disconnct, and Reconnet:
@@ -95,12 +108,14 @@ class MQTTClientStage(PipelineStage):
             # of callbacks.
             #
             self.transport.on_mqtt_connected = on_connected
+            self.transport.on_mqtt_connection_failure = on_connection_failure
             try:
                 self.transport.connect(
                     password=self.sas_token, client_certificate=self.trusted_certificate_chain
                 )
             except Exception as e:
-                self.transport.on_mqtt_connected = self.on_connected
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 raise e
 
         elif isinstance(op, pipeline_ops_base.ReconnectOperation):
@@ -108,24 +123,43 @@ class MQTTClientStage(PipelineStage):
 
             def on_connected():
                 logger.info("{}({}): on_connected.  completing op.".format(self.name, op.name))
-                self.transport.on_mqtt_connected = self.on_connected
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 self.on_connected()
+                operation_flow.complete_op(self, op)
+
+            def on_connection_failure(cause):
+                logger.info(
+                    "{}({}): on_connection_failure.  error={}.  completing op.".format(
+                        self.name, op.name, cause
+                    )
+                )
+                op.error = cause
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 operation_flow.complete_op(self, op)
 
             # See "A note on exception handling" above
             self.transport.on_mqtt_connected = on_connected
+            self.transport.on_mqtt_connection_failure = on_connection_failure
             try:
                 self.transport.reconnect(self.sas_token)
             except Exception as e:
-                self.transport.on_mqtt_connected = self.on_connected
+                self.transport.on_mqtt_connected = self._on_unexpected_connection
+                self.transport.on_mqtt_connection_failure = self._on_unexpected_connection_failure
                 raise e
 
         elif isinstance(op, pipeline_ops_base.DisconnectOperation):
             logger.info("{}({}): disconnecting".format(self.name, op.name))
 
-            def on_disconnected():
-                logger.info("{}({}): on_disconnected.  completing op.".format(self.name, op.name))
-                self.transport.on_mqtt_disconnected = self.on_disconnected
+            def on_disconnected(cause):
+                logger.info(
+                    "{}({}): on_disconnected.  error={}.  completing op.".format(
+                        self.name, op.name, cause
+                    )
+                )
+                op.error = cause
+                self.transport.on_mqtt_disconnected = self._on_unexpected_disconnection
                 self.on_disconnected()
                 operation_flow.complete_op(self, op)
 
@@ -176,3 +210,32 @@ class MQTTClientStage(PipelineStage):
             stage=self,
             event=pipeline_events_mqtt.IncomingMQTTMessageEvent(topic=topic, payload=payload),
         )
+
+    def _on_unexpected_connection(self):
+        """
+        Handler that gets called by the transport when it connections.  This handler only
+        gets called when it connects outside of the normal connect/reconnect logic.
+        """
+        logger.warn("an unexpected connection occured")
+        self.on_connected()
+
+    def _on_unexpected_connection_failure(self, cause):
+        """
+        Handler that gets called by the transport when a connection fails.  This handler only
+        gets called when a connection fails outside of the normal connect/reconnect logic,
+        which should not happen, so the only real route of action is to pass the failure up
+        to the unhandled error handler
+        """
+        logger.error("an unexpected connection failure occured: {}".format(cause))
+        self.pipeline_root.unhandled_error_handler(cause)
+
+    def _on_unexpected_disconnection(self, cause):
+        """
+        Handler that gets called by the transport when the transport disconnects.  This handler only
+        gets called when a disconnection fails outside of the normal connect/reconnect logic,
+        which should not happen, so the only real route of action is to pass the failure up
+        to the unhandled error handler
+        """
+        logger.error("an unexpected disconnection occured: {}".format(cause))
+        self.pipeline_root.unhandled_error_handler(cause)
+        self.on_disconnected()

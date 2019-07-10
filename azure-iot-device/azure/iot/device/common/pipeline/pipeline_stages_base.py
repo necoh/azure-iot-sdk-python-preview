@@ -124,7 +124,7 @@ class PipelineStage(object):
             self._handle_pipeline_event(event)
         except Exception as e:
             logger.error(
-                msg="Error in %s._handle_pipeline_event call".format(self.name), exc_info=e
+                msg="Error in {}._handle_pipeline_event call".format(self.name), exc_info=e
             )
             self.pipeline_root.unhandled_error_handler(e)
 

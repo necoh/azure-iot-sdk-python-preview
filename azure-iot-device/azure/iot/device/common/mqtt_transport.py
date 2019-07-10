@@ -9,6 +9,7 @@ import logging
 import ssl
 import threading
 import traceback
+from . import error_map_paho
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ class MQTTTransport(object):
     :type on_mqtt_disconnected: Function
     :ivar on_mqtt_message_received: Event handler callback, called upon receiving a message.
     :type on_mqtt_message_received: Function
+    :ivar on_mqtt_connection_failure: Event handler callback, called upon a connection failure.
+    :type on_mqtt_connection_failure: Function
     """
 
     def __init__(self, client_id, hostname, username, ca_cert=None):
@@ -42,6 +45,7 @@ class MQTTTransport(object):
         self.on_mqtt_connected = None
         self.on_mqtt_disconnected = None
         self.on_mqtt_message_received = None
+        self.on_mqtt_connection_failure = None
 
         self._op_manager = OperationManager()
 
@@ -60,8 +64,20 @@ class MQTTTransport(object):
         def on_connect(client, userdata, flags, rc):
             logger.info("connected with result code: {}".format(rc))
 
-            # TODO: how to do failed connection?
-            if self.on_mqtt_connected:
+            if rc:
+                if self.on_mqtt_connection_failure:
+                    try:
+                        self.on_mqtt_connection_failure(
+                            error_map_paho.create_error_from_conack_rc_code(rc)
+                        )
+                    except Exception:
+                        logger.error("Unexpected error calling on_mqtt_connection_failure")
+                        logger.error(traceback.format_exc())
+                else:
+                    logger.info(
+                        "connection failed, but no on_mqtt_connection_failure handler callback provided"
+                    )
+            elif self.on_mqtt_connected:
                 try:
                     self.on_mqtt_connected()
                 except Exception:
@@ -73,9 +89,13 @@ class MQTTTransport(object):
         def on_disconnect(client, userdata, rc):
             logger.info("disconnected with result code: {}".format(rc))
 
+            cause = None
+            if rc:
+                cause = error_map_paho.crate_transport_error_from_rc_code(rc)
+
             if self.on_mqtt_disconnected:
                 try:
-                    self.on_mqtt_disconnected()
+                    self.on_mqtt_disconnected(cause)
                 except Exception:
                     logger.error("Unexpected error calling on_mqtt_disconnected")
                     logger.error(traceback.format_exc())
@@ -84,17 +104,20 @@ class MQTTTransport(object):
 
         def on_subscribe(client, userdata, mid, granted_qos):
             logger.info("suback received for {}".format(mid))
-            # TODO: how to do failure?
+            # subscribe failures are returned from the subscribe() call.  This is just
+            # a notification that a SUBACK was received, so there is no failure case here
             self._op_manager.complete_operation(mid)
 
         def on_unsubscribe(client, userdata, mid):
             logger.info("UNSUBACK received for {}".format(mid))
-            # TODO: how to do failure?
+            # unsubscribe failures are returned from the unsubscribe() call.  This is just
+            # a notification that a SUBACK was received, so there is no failure case here
             self._op_manager.complete_operation(mid)
 
         def on_publish(client, userdata, mid):
             logger.info("payload published for {}".format(mid))
-            # TODO: how to do failed publish
+            # publish failures are returned from the publish() call.  This is just
+            # a notification that a PUBACK was received, so there is no failure case here
             self._op_manager.complete_operation(mid)
 
         def on_message(client, userdata, mqtt_message):
@@ -158,8 +181,12 @@ class MQTTTransport(object):
         self._mqtt_client.tls_insecure_set(False)
         self._mqtt_client.username_pw_set(username=self._username, password=password)
 
-        self._mqtt_client.connect(host=self._hostname, port=8883)
         self._mqtt_client.loop_start()
+        rc = self._mqtt_client.connect(host=self._hostname, port=8884)
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.connect returned rc={}".format(rc)
+            )
 
     def reconnect(self, password):
         """
@@ -171,15 +198,23 @@ class MQTTTransport(object):
         """
         logger.info("reconnecting MQTT client")
         self._mqtt_client.username_pw_set(username=self._username, password=password)
-        self._mqtt_client.reconnect()
+        rc = self._mqtt_client.reconnect()
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.reconnect returned rc={}".format(rc)
+            )
 
     def disconnect(self):
         """
         Disconnect from the MQTT broker.
         """
         logger.info("disconnecting MQTT client")
-        self._mqtt_client.disconnect()
+        rc = self._mqtt_client.disconnect()
         self._mqtt_client.loop_stop()
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.disconnect returned rc={}".format(rc)
+            )
 
     def subscribe(self, topic, qos=1, callback=None):
         """
@@ -194,7 +229,11 @@ class MQTTTransport(object):
         :raises: ValueError if topic is None or has zero string length
         """
         logger.info("subscribing to {} with qos {}".format(topic, qos))
-        (result, mid) = self._mqtt_client.subscribe(topic, qos=qos)
+        (rc, mid) = self._mqtt_client.subscribe(topic, qos=qos)
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.subscribe returned rc={}".format(rc)
+            )
         self._op_manager.establish_operation(mid, callback)
 
     def unsubscribe(self, topic, callback=None):
@@ -207,7 +246,11 @@ class MQTTTransport(object):
         :raises: ValueError if topic is None or has zero string length
         """
         logger.info("unsubscribing from {}".format(topic))
-        (result, mid) = self._mqtt_client.unsubscribe(topic)
+        (rc, mid) = self._mqtt_client.unsubscribe(topic)
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.unsubscribe returned rc={}".format(rc)
+            )
         self._op_manager.establish_operation(mid, callback)
 
     def publish(self, topic, payload, qos=1, callback=None):
@@ -225,8 +268,12 @@ class MQTTTransport(object):
         :raises: ValueError if the length of the payload is greater than 268435455 bytes
         """
         logger.info("sending")
-        message_info = self._mqtt_client.publish(topic=topic, payload=payload, qos=qos)
-        self._op_manager.establish_operation(message_info.mid, callback)
+        (rc, mid) = self._mqtt_client.publish(topic=topic, payload=payload, qos=qos)
+        if rc:
+            raise error_map_paho.create_error_from_rc_code(
+                rc, "mqtt_client.unsubscribe returned rc={}".format(rc)
+            )
+        self._op_manager.establish_operation(mid, callback)
 
 
 class OperationManager(object):
