@@ -25,7 +25,7 @@ The intention of these decorators is to ensure the following:
   decorators will wait until that function is complete before invoking another
   function on that thread.
 
-3. There is a different thread which is used for callsbacks into user code, known
+3. There is a different thread which is used for callbacks into user code, known
   as the the "callback thread".  This is not meant for callbacks into pipeline
   code.  Those callbacks should still execute on the pipeline thread.  The
   `invoke_on_callback_thread_nowait` decorator is used to ensure that callbacks
@@ -47,7 +47,7 @@ The intention of these decorators is to ensure the following:
   and is not expecting to handle any exceptions, such as protocol library
   handlers which call into the pipeline to deliver protocol messages.
 
-6. Calls into the callback thread could theretically block, but we currently
+6. Calls into the callback thread could theoretically block, but we currently
   only have decorators which enter the callback thread without blocking.  This
   is done to ensure that client code does not execute on the pipeline thread and
   also to ensure that the pipline thread is not blocked while waiting for client
@@ -70,6 +70,8 @@ These decorators use concurrent.futures.Future and the ThreadPoolExecutor becaus
 
 """
 
+_executors = {}
+
 
 def _get_named_executor(thread_name):
     """
@@ -77,26 +79,11 @@ def _get_named_executor(thread_name):
     this function will create on with a single worker and assign it to the provided
     name.
     """
-    executor = getattr(_get_named_executor, thread_name, None)
-    if not executor:
+    global _executors
+    if thread_name not in _executors:
         logger.info("Creating {} executor".format(thread_name))
-        executor = ThreadPoolExecutor(max_workers=1)
-        setattr(_get_named_executor, thread_name, ThreadPoolExecutor(max_workers=1))
-    return executor
-
-
-def _get_thread_local_storage():
-    """
-    Get an object which contains "thread local storage" using the threading.local()
-    function.  If no such object exists, one is created.  The object returned from
-    `threading.local()` appears to be a global object, but has a different value for
-    each individual thread.  We use this so we can check which thread we're running
-    inside at runtime.
-    """
-    if not getattr(_get_thread_local_storage, "local", None):
-        logger.info("Creating thread local storage")
-        _get_thread_local_storage.local = threading.local()
-    return _get_thread_local_storage.local
+        _executors[thread_name] = ThreadPoolExecutor(max_workers=1)
+    return _executors[thread_name]
 
 
 def _invoke_on_executor_thread(thread_name, block=True, _func=None):
@@ -107,14 +94,20 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
     """
 
     def decorator(func):
-        function_name = getattr(func, "__name__", str(func))
+        # Mocks on py27 don't have a __name__ attribute.  Use str() if you can't use __name__
+        try:
+            function_name = func.__name__
+            function_has_name = True
+        except AttributeError:
+            function_name = str(func)
+            function_has_name = False
 
         def wrapper(*args, **kwargs):
-            if not getattr(_get_thread_local_storage(), "in_{}_thread".format(thread_name), False):
+            if threading.current_thread().name is not thread_name:
                 logger.info("Starting {} in {} thread".format(function_name, thread_name))
 
                 def thread_proc():
-                    setattr(_get_thread_local_storage(), "in_{}_thread".format(thread_name), True)
+                    threading.current_thread().name = thread_name
                     return func(*args, **kwargs)
 
                 # TODO: add a timeout here and throw exception on failure
@@ -130,7 +123,7 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
         # Silly hack:  On 2.7, we can't use @functools.wraps on callables don't have a __name__ attribute
         # attribute(like MagicMock object), so we only do it when we have a name.  functools.update_wrapper
         # below is the same as using the @functools.wraps(func) decorator on the wrapper function above.
-        if getattr(func, "__name__", None):
+        if function_has_name:
             return functools.update_wrapper(wrapped=func, wrapper=wrapper)
         else:
             return wrapper
@@ -169,18 +162,26 @@ def _assert_executor_thread(thread_name, _func=None):
     """
 
     def decorator(func):
-        function_name = getattr(func, "__name__", str(func))
+        try:
+            function_name = func.__name__
+        except AttributeError:
+            function_name = str(func)
 
+        # since we never apply this decorator to MicroMock objects, we can use functools.wraps directly,
+        # and we don't need the silly functools.update_wrapper hack that we use above.
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            if not getattr(_get_thread_local_storage(), "in_{}_thread".format(thread_name), False):
-                assert False, """Function {function_name} is not running inside {thread_name} thread.
-                    It should be. You should use invoke_on_{function_name}_thread(_nowait) to enter the
-                    {thread_name} thread before calling this function.  If you're hitting this from
-                    inside a test function, you may need to add the fake_pipeline_thread fixture to
-                    your test.  (grep for apply_fake_pipeline_thread).""".format(
-                    function_name=function_name, thread_name=thread_name
-                )
+
+            assert (
+                threading.current_thread().name == thread_name
+            ), """
+                Function {function_name} is not running inside {thread_name} thread.
+                It should be. You should use invoke_on_{thread_name}_thread(_nowait) to enter the
+                {thread_name} thread before calling this function.  If you're hitting this from
+                inside a test function, you may need to add the fake_pipeline_thread fixture to
+                your test.  (grep for apply_fake_pipeline_thread) """.format(
+                function_name=function_name, thread_name=thread_name
+            )
 
             return func(*args, **kwargs)
 

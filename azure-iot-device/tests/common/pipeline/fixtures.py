@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import pytest
+import threading
 from tests.common.pipeline import helpers
 from azure.iot.device.common.pipeline import (
     pipeline_events_base,
@@ -78,14 +79,14 @@ def new_op(callback):
 
 
 @pytest.fixture
-def fake_pipeline_thread(mocker):
+def fake_pipeline_thread():
     """
     This fixture mocks out the thread local storage that the pipeline decorators
     use to assert that you are in a pipeline thread.
     """
+    this_thread = threading.current_thread()
+    old_name = this_thread.name
 
-    class mock_local(object):
-        def __init__(self):
-            self.in_pipeline_thread = True
-
-    mocker.patch.object(pipeline_thread, "_get_thread_local_storage", mock_local)
+    this_thread.name = "pipeline"
+    yield
+    this_thread.name = old_name

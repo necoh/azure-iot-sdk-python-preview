@@ -129,6 +129,7 @@ class IoTHubMQTTConverterStage(PipelineStage):
             # All other operations get passed down
             operation_flow.pass_op_to_next_stage(self, op)
 
+    @pipeline_thread.runs_on_pipeline_thread
     def _set_topic_names(self, device_id, module_id):
         """
         Build topic names based on the device_id and module_id passed.
