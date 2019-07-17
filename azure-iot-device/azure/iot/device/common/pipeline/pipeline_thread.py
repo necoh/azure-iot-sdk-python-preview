@@ -88,137 +88,95 @@ def _get_named_executor(thread_name):
     return _executors[thread_name]
 
 
-def _invoke_on_executor_thread(thread_name, block=True, _func=None):
+def _invoke_on_executor_thread(func, thread_name, block=True):
     """
-    Decorator which runs the wrapped function on a given thread.  If block==False,
+    Return wrapper to run the function on a given thread.  If block==False,
     the call returns immediately without waiting for the decorated function to complete.
     If block==True, the call waits for the decorated function to complete before returning.
     """
 
-    def decorator(func):
-        # Mocks on py27 don't have a __name__ attribute.  Use str() if you can't use __name__
-        try:
-            function_name = func.__name__
-            function_has_name = True
-        except AttributeError:
-            function_name = str(func)
-            function_has_name = False
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if threading.current_thread().name is not thread_name:
+            logger.info("Starting {} in {} thread".format(func.__name__, thread_name))
 
-        def wrapper(*args, **kwargs):
-            if threading.current_thread().name is not thread_name:
-                logger.info("Starting {} in {} thread".format(function_name, thread_name))
+            def thread_proc():
+                threading.current_thread().name = thread_name
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if not block:
+                        unhandled_exceptions.exception_caught_in_background_thread(e)
+                except BaseException:
+                    if not block:
+                        logger.error("Unhandled exception in background thread")
+                        logger.error(
+                            "This may cause the background thread to abort and may result in system instability."
+                        )
+                        traceback.print_exc()
+                    raise
 
-                def thread_proc():
-                    threading.current_thread().name = thread_name
-                    try:
-                        return func(*args, **kwargs)
-                    except Exception as e:
-                        if not block:
-                            unhandled_exceptions.exception_caught_in_background_thread(e)
-                    except BaseException:
-                        if not block:
-                            logger.error("Unhandled exception in background thread")
-                            logger.error(
-                                "This may cause the background thread to abort and may result in system instability."
-                            )
-                            traceback.print_exc()
-                        raise
-
-                # TODO: add a timeout here and throw exception on failure
-                future = _get_named_executor(thread_name).submit(thread_proc)
-                if block:
-                    return future.result()
-                else:
-                    return future
+            # TODO: add a timeout here and throw exception on failure
+            future = _get_named_executor(thread_name).submit(thread_proc)
+            if block:
+                return future.result()
             else:
-                logger.debug("Already in {} thread for {}".format(thread_name, function_name))
-                return func(*args, **kwargs)
-
-        # Silly hack:  On 2.7, we can't use @functools.wraps on callables don't have a __name__ attribute
-        # attribute(like MagicMock object), so we only do it when we have a name.  functools.update_wrapper
-        # below is the same as using the @functools.wraps(func) decorator on the wrapper function above.
-        if function_has_name:
-            return functools.update_wrapper(wrapped=func, wrapper=wrapper)
+                return future
         else:
-            return wrapper
+            logger.debug("Already in {} thread for {}".format(thread_name, func.__name__))
+            return func(*args, **kwargs)
 
-    # This function (like many decorators) has dual usage.  It can be a decorator, or it can wrap a function
-    # inline.  If _func is None, then this is being used as a decorator, so we return the decorator object.
-    # But, if _func is not None, then this function is being used to wrap another function inline, in that
-    # case, we call the decorator to wrap the function and return the wrapped function.
-    if _func is None:
-        return decorator
-    else:
-        wrapped_function = decorator(_func)
-        # tests need to be able to check mocker attributes on wrapped functions, so we set the __wrapped__
-        # attribute to the original function.  This is normally done by functools.update_wrapper, but this
-        # path wraps the function manually, so we need to set __wrapped__ manually.
-        wrapped_function.__wrapped__ = _func
-        return wrapped_function
+    return wrapper
 
 
-def invoke_on_pipeline_thread(_func=None):
+def invoke_on_pipeline_thread(func):
     """
     Run the decorated function on the pipeline thread.
     """
-    return _invoke_on_executor_thread(thread_name="pipeline", _func=_func)
+    return _invoke_on_executor_thread(func=func, thread_name="pipeline")
 
 
-def invoke_on_pipeline_thread_nowait(_func=None):
+def invoke_on_pipeline_thread_nowait(func):
     """
     Run the decorated function on the pipeline thread, but don't wait for it to complete
     """
-    return _invoke_on_executor_thread(thread_name="pipeline", block=False, _func=_func)
+    return _invoke_on_executor_thread(func=func, thread_name="pipeline", block=False)
 
 
-def invoke_on_callback_thread_nowait(_func=None):
+def invoke_on_callback_thread_nowait(func):
     """
     Run the decorated function on the callback thread, but don't wait for it to complete
     """
-    return _invoke_on_executor_thread(thread_name="callback", block=False, _func=_func)
+    return _invoke_on_executor_thread(func=func, thread_name="callback", block=False)
 
 
-def _assert_executor_thread(thread_name, _func=None):
+def _assert_executor_thread(func, thread_name):
     """
     Decorator which asserts that the given function only gets called inside the given
     thread.
     """
 
-    def decorator(func):
-        try:
-            function_name = func.__name__
-        except AttributeError:
-            function_name = str(func)
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
 
-        # since we never apply this decorator to MicroMock objects, we can use functools.wraps directly,
-        # and we don't need the silly functools.update_wrapper hack that we use above.
+        assert (
+            threading.current_thread().name == thread_name
+        ), """
+            Function {function_name} is not running inside {thread_name} thread.
+            It should be. You should use invoke_on_{thread_name}_thread(_nowait) to enter the
+            {thread_name} thread before calling this function.  If you're hitting this from
+            inside a test function, you may need to add the fake_pipeline_thread fixture to
+            your test.  (grep for apply_fake_pipeline_thread) """.format(
+            function_name=func.__name__, thread_name=thread_name
+        )
 
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
 
-            assert (
-                threading.current_thread().name == thread_name
-            ), """
-                Function {function_name} is not running inside {thread_name} thread.
-                It should be. You should use invoke_on_{thread_name}_thread(_nowait) to enter the
-                {thread_name} thread before calling this function.  If you're hitting this from
-                inside a test function, you may need to add the fake_pipeline_thread fixture to
-                your test.  (grep for apply_fake_pipeline_thread) """.format(
-                function_name=function_name, thread_name=thread_name
-            )
-
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    if _func is None:
-        return decorator
-    else:
-        return decorator(_func)
+    return wrapper
 
 
-def runs_on_pipeline_thread(_func=None):
+def runs_on_pipeline_thread(func):
     """
     Decorator which marks a function as only running inside the pipeline thread.
     """
-    return _assert_executor_thread(thread_name="pipeline", _func=_func)
+    return _assert_executor_thread(func=func, thread_name="pipeline")

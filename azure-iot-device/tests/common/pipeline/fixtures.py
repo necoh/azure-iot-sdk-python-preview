@@ -16,7 +16,9 @@ from azure.iot.device.common.pipeline import (
 
 @pytest.fixture
 def callback(mocker):
-    return mocker.Mock()
+    callback = mocker.Mock()
+    callback.__name__ = "mock callback"
+    return callback
 
 
 @pytest.fixture
