@@ -112,7 +112,6 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
                     threading.current_thread().name = thread_name
                     try:
                         return func(*args, **kwargs)
-                    # BKTODO: add tests for these 2 cases.
                     except Exception as e:
                         if not block:
                             unhandled_exceptions.exception_caught_in_background_thread(e)
