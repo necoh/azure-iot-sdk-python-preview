@@ -97,6 +97,9 @@ def assert_callback_succeeded(op, callback=None):
     if not callback:
         callback = op.callback
     try:
+        # if the callback has a __wrapped__ attribute, that means that the
+        # pipeline added a wrapper around the callback, so we want to look
+        # at the original function instead of the wrapped function.
         callback = callback.__wrapped__
     except AttributeError:
         pass
@@ -110,6 +113,9 @@ def assert_callback_failed(op, callback=None, error=None):
     if not callback:
         callback = op.callback
     try:
+        # if the callback has a __wrapped__ attribute, that means that the
+        # pipeline added a wrapper around the callback, so we want to look
+        # at the original function instead of the wrapped function.
         callback = callback.__wrapped__
     except AttributeError:
         pass

@@ -142,10 +142,17 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
         else:
             return wrapper
 
+    # This function (like many decorators) has dual usage.  It can be a decorator, or it can wrap a function
+    # inline.  If _func is None, then this is being used as a decorator, so we return the decorator object.
+    # But, if _func is not None, then this function is being used to wrap another function inline, in that
+    # case, we call the decorator to wrap the function and return the wrapped function.
     if _func is None:
         return decorator
     else:
         wrapped_function = decorator(_func)
+        # tests need to be able to check mocker attributes on wrapped functions, so we set the __wrapped__
+        # attribute to the original function.  This is normally done by functools.update_wrapper, but this
+        # path wraps the function manually, so we need to set __wrapped__ manually.
         wrapped_function.__wrapped__ = _func
         return wrapped_function
 
