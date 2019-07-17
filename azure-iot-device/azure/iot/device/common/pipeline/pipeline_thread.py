@@ -6,8 +6,10 @@
 import functools
 import logging
 import threading
+import traceback
 from multiprocessing.pool import ThreadPool
 from concurrent.futures import ThreadPoolExecutor
+from azure.iot.device.common import unhandled_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +110,20 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
 
                 def thread_proc():
                     threading.current_thread().name = thread_name
-                    return func(*args, **kwargs)
+                    try:
+                        return func(*args, **kwargs)
+                    # BKTODO: add tests for these 2 cases.
+                    except Exception as e:
+                        if not block:
+                            unhandled_exceptions.exception_caught_in_background_thread(e)
+                    except BaseException:
+                        if not block:
+                            logger.error("Unhandled exception in background thread")
+                            logger.error(
+                                "This may cause the background thread to abort and may result in system instability."
+                            )
+                            traceback.print_exc()
+                        raise
 
                 # TODO: add a timeout here and throw exception on failure
                 future = _get_named_executor(thread_name).submit(thread_proc)
@@ -131,7 +146,9 @@ def _invoke_on_executor_thread(thread_name, block=True, _func=None):
     if _func is None:
         return decorator
     else:
-        return decorator(_func)
+        wrapped_function = decorator(_func)
+        wrapped_function.__wrapped__ = _func
+        return wrapped_function
 
 
 def invoke_on_pipeline_thread(_func=None):
@@ -169,6 +186,7 @@ def _assert_executor_thread(thread_name, _func=None):
 
         # since we never apply this decorator to MicroMock objects, we can use functools.wraps directly,
         # and we don't need the silly functools.update_wrapper hack that we use above.
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
 

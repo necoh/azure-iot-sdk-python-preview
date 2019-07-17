@@ -13,6 +13,7 @@ from . import pipeline_events_base
 from . import pipeline_ops_base
 from . import operation_flow
 from . import pipeline_thread
+from azure.iot.device.common import unhandled_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +127,7 @@ class PipelineStage(object):
         try:
             self._handle_pipeline_event(event)
         except Exception as e:
-            logger.error(
-                msg="Error in %s._handle_pipeline_event call".format(self.name), exc_info=e
-            )
-            self.pipeline_root.unhandled_error_handler(e)
+            unhandled_exceptions.exception_caught_in_background_thread(e)
 
     @pipeline_thread.runs_on_pipeline_thread
     def _handle_pipeline_event(self, event):
@@ -188,7 +186,6 @@ class PipelineRootStage(PipelineStage):
 
         :param PipelineOperation op: Operation to run.
         """
-        op.callback = pipeline_thread.invoke_on_callback_thread_nowait(op.callback)
         operation_flow.pass_op_to_next_stage(self, op)
 
     def append_stage(self, new_next_stage):
@@ -207,17 +204,6 @@ class PipelineRootStage(PipelineStage):
         new_next_stage.previous = old_tail
         new_next_stage.pipeline_root = self
         return self
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def unhandled_error_handler(self, error):
-        """
-        Handler for errors that happen which cannot be tied to a specific operation.
-        This is still a tentative implimentation and masy be replaced by
-        some other mechanism as details on behavior are finalized.
-        """
-        # TODO: decide how to pass this error to the app
-        # TODO: if there's an error in the app handler, print it and exit
-        pass
 
     @pipeline_thread.runs_on_pipeline_thread
     def _handle_pipeline_event(self, event):
@@ -492,13 +478,3 @@ class CoordinateRequestAndResponseStage(PipelineStage):
                 )
         else:
             operation_flow.pass_event_to_previous_stage(self, event)
-
-
-class RetryStage(PipelineStage):
-    @pipeline_thread.runs_on_pipeline_thread
-    def _run_op(self, op):
-        op.original_callback = op.callback
-        operation_flow.pass_op_to_next_stage(self, op)
-
-    def _handle_error(self, op):
-        pass

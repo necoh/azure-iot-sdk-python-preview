@@ -96,6 +96,10 @@ def make_mock_stage(mocker, stage_to_make):
 def assert_callback_succeeded(op, callback=None):
     if not callback:
         callback = op.callback
+    try:
+        callback = callback.__wrapped__
+    except AttributeError:
+        pass
     assert callback.call_count == 1
     callback_arg = callback.call_args[0][0]
     assert callback_arg == op
@@ -105,6 +109,10 @@ def assert_callback_succeeded(op, callback=None):
 def assert_callback_failed(op, callback=None, error=None):
     if not callback:
         callback = op.callback
+    try:
+        callback = callback.__wrapped__
+    except AttributeError:
+        pass
     assert callback.call_count == 1
     callback_arg = callback.call_args[0][0]
     assert callback_arg == op
@@ -125,9 +133,15 @@ class UnhandledException(BaseException):
 def get_arg_count(fn):
     """
     return the number of arguments (args) passed into a
-    particular function.  Returned value not include kwargs.
+    particular function.  Returned value does not include kwargs.
     """
-    return len(getargspec(fn).args)
+    try:
+        # if __wrapped__ is set, we're looking at a decorated function
+        # Functools.wraps doesn't copy arg metadata, so we need to
+        # get argument count from the wrapped function instead.
+        return len(getargspec(fn.__wrapped__).args)
+    except AttributeError:
+        return len(getargspec(fn).args)
 
 
 def make_mock_op_or_event(cls):

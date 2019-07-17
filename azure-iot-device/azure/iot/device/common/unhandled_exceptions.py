@@ -3,13 +3,10 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import logging
 
-from tests.common.pipeline.fixtures import (
-    callback,
-    fake_exception,
-    fake_base_exception,
-    event,
-    fake_pipeline_thread,
-    fake_non_pipeline_thread,
-    unhandled_error_handler,
-)
+logger = logging.getLogger(__name__)
+
+
+def exception_caught_in_background_thread(e):
+    logger.error(msg="Exception caught in background thread.  Unable to handle.", exc_info=e)

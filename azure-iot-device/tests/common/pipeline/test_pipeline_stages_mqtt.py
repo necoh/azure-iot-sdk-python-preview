@@ -68,6 +68,7 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
     handled_ops=ops_handled_by_this_stage,
     all_events=all_common_events,
     handled_events=events_handled_by_this_stage,
+    methods_that_enter_pipeline_thread=["_on_message_received", "on_connected", "on_disconnected"],
 )
 
 
