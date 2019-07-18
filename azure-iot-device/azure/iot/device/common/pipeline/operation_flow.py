@@ -7,6 +7,7 @@
 import logging
 import sys
 from . import pipeline_thread
+from azure.iot.device.common import unhandled_exceptions
 
 from six.moves import queue
 
@@ -89,7 +90,7 @@ def run_ops_in_serial(stage, *args, **kwargs):
                         ),
                         exc_info=e,
                     )
-                    stage.pipeline_root.unhandled_error_handler(e)
+                    unhandled_exceptions.exception_caught_in_background_thread(e)
 
             finally_op.callback = on_finally_done
             logger.info(
@@ -111,7 +112,7 @@ def run_ops_in_serial(stage, *args, **kwargs):
                     ),
                     exc_info=e,
                 )
-                stage.pipeline_root.unhandled_error_handler(e)
+                unhandled_exceptions.exception_caught_in_background_thread(e)
 
     @pipeline_thread.runs_on_pipeline_thread
     def on_op_done(completed_op):
@@ -249,7 +250,7 @@ def complete_op(stage, op):
             ),
             exc_info=e,
         )
-        stage.pipeline_root.unhandled_error_handler(e)
+        unhandled_exceptions.exception_caught_in_background_thread(e)
 
 
 @pipeline_thread.runs_on_pipeline_thread
@@ -269,4 +270,4 @@ def pass_event_to_previous_stage(stage, event):
         error = NotImplementedError(
             "{} unhandled at {} stage with no previous stage".format(event.name, stage.name)
         )
-        stage.pipeline_root.unhandled_error_handler(error)
+        unhandled_exceptions.exception_caught_in_background_thread(error)

@@ -6,6 +6,7 @@
 import pytest
 import threading
 from tests.common.pipeline import helpers
+from azure.iot.device.common import unhandled_exceptions
 from azure.iot.device.common.pipeline import (
     pipeline_events_base,
     pipeline_ops_base,
@@ -81,7 +82,7 @@ def new_op(callback):
 @pytest.fixture
 def fake_pipeline_thread():
     """
-    This fixture mocks out the thread local storage that the pipeline decorators
+    This fixture mocks out the thread name so that the pipeline decorators
     use to assert that you are in a pipeline thread.
     """
     this_thread = threading.current_thread()
@@ -90,3 +91,21 @@ def fake_pipeline_thread():
     this_thread.name = "pipeline"
     yield
     this_thread.name = old_name
+
+
+@pytest.fixture
+def fake_non_pipeline_thread():
+    """
+    This fixture sets thread name to something other than "pipeline" to force asserts
+    """
+    this_thread = threading.current_thread()
+    old_name = this_thread.name
+
+    this_thread.name = "not pipeline"
+    yield
+    this_thread.name = old_name
+
+
+@pytest.fixture
+def unhandled_error_handler(mocker):
+    return mocker.patch.object(unhandled_exceptions, "exception_caught_in_background_thread")
