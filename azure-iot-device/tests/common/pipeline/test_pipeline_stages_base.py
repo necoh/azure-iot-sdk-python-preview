@@ -94,11 +94,11 @@ def _test_pipeline_root_runs_operation_in_pipeline_thread(
 ):
     # the stage fixture comes from the TestPipelineRootStagePipelineThreading object that
     # this test method gets added to, so it's a PipelineRootStage object
-    assert threading.current_thread().name is not "pipeline"
+    assert threading.current_thread().name != "pipeline"
 
     def mock_run_op(self, op):
         print("mock_run_op called")
-        assert threading.current_thread().name is "pipeline"
+        assert threading.current_thread().name == "pipeline"
         op.callback(op)
 
     mock_run_op = mocker.MagicMock(mock_run_op)
