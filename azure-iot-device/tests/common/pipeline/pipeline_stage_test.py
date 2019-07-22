@@ -220,7 +220,7 @@ def add_pipeline_thread_tests(
             return cls()
 
         @pytest.mark.parametrize("method_name", methods_that_assert_pipeline_thread)
-        @pytest.mark.it("Has a method that must be in a pipeline thread")
+        @pytest.mark.it("Enforces use of the pipeline thread when calling method")
         def test_asserts_in_pipeline(self, stage, method_name, fake_non_pipeline_thread):
             func = getattr(stage, method_name)
             args = [None for i in (range(get_arg_count(func) - 1))]
@@ -230,7 +230,7 @@ def add_pipeline_thread_tests(
         if methods_that_enter_pipeline_thread:
 
             @pytest.mark.parametrize("method_name", methods_that_enter_pipeline_thread)
-            @pytest.mark.it("Has a method that enters the pipeline thread before running")
+            @pytest.mark.it("Automatically enters the pipeline thread when calling method")
             def test_enters_pipeline(self, mocker, stage, method_name, fake_non_pipeline_thread):
                 func = getattr(stage, method_name)
                 args = [None for i in (range(get_arg_count(func) - 1))]
