@@ -11,6 +11,7 @@ from . import (
     pipeline_ops_mqtt,
     pipeline_events_mqtt,
     operation_flow,
+    pipeline_thread,
 )
 from azure.iot.device.common.mqtt_transport import MQTTTransport
 
@@ -24,6 +25,7 @@ class MQTTClientStage(PipelineStage):
     is not in the MQTT group of operations, but can only be run at the protocol level.
     """
 
+    @pipeline_thread.runs_on_pipeline_thread
     def _run_op(self, op):
         if isinstance(op, pipeline_ops_mqtt.SetMQTTConnectionArgsOperation):
             # pipeline_ops_mqtt.SetMQTTConnectionArgsOperation is where we create our MQTTTransport object and set
@@ -63,6 +65,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_base.ConnectOperation):
             logger.info("{}({}): conneting".format(self.name, op.name))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_connected():
                 logger.info("{}({}): on_connected.  completing op.".format(self.name, op.name))
                 self.transport.on_mqtt_connected = self._on_unexpected_connection
@@ -121,6 +124,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_base.ReconnectOperation):
             logger.info("{}({}): reconnecting".format(self.name, op.name))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_connected():
                 logger.info("{}({}): on_connected.  completing op.".format(self.name, op.name))
                 self.transport.on_mqtt_connected = self._on_unexpected_connection
@@ -152,6 +156,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_base.DisconnectOperation):
             logger.info("{}({}): disconnecting".format(self.name, op.name))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_disconnected(cause):
                 logger.info(
                     "{}({}): on_disconnected.  error={}.  completing op.".format(
@@ -174,6 +179,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_mqtt.MQTTPublishOperation):
             logger.info("{}({}): publishing on {}".format(self.name, op.name, op.topic))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_published():
                 logger.info("{}({}): PUBACK received. completing op.".format(self.name, op.name))
                 operation_flow.complete_op(self, op)
@@ -183,6 +189,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_mqtt.MQTTSubscribeOperation):
             logger.info("{}({}): subscribing to {}".format(self.name, op.name, op.topic))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_subscribed():
                 logger.info("{}({}): SUBACK received. completing op.".format(self.name, op.name))
                 operation_flow.complete_op(self, op)
@@ -192,6 +199,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_mqtt.MQTTUnsubscribeOperation):
             logger.info("{}({}): unsubscribing from {}".format(self.name, op.name, op.topic))
 
+            @pipeline_thread.invoke_on_pipeline_thread_nowait
             def on_unsubscribed():
                 logger.info("{}({}): UNSUBACK received.  completing op.".format(self.name, op.name))
                 operation_flow.complete_op(self, op)
@@ -201,6 +209,7 @@ class MQTTClientStage(PipelineStage):
         else:
             operation_flow.pass_op_to_next_stage(self, op)
 
+    @pipeline_thread.invoke_on_pipeline_thread_nowait
     def _on_message_received(self, topic, payload):
         """
         Handler that gets called by the protocol library when an incoming message arrives.
@@ -211,6 +220,7 @@ class MQTTClientStage(PipelineStage):
             event=pipeline_events_mqtt.IncomingMQTTMessageEvent(topic=topic, payload=payload),
         )
 
+    @pipeline_thread.invoke_on_pipeline_thread_nowait
     def _on_unexpected_connection(self):
         """
         Handler that gets called by the transport when it connections.  This handler only
@@ -219,6 +229,7 @@ class MQTTClientStage(PipelineStage):
         logger.warn("an unexpected connection occured")
         self.on_connected()
 
+    @pipeline_thread.invoke_on_pipeline_thread_nowait
     def _on_unexpected_connection_failure(self, cause):
         """
         Handler that gets called by the transport when a connection fails.  This handler only
@@ -229,6 +240,7 @@ class MQTTClientStage(PipelineStage):
         logger.error("an unexpected connection failure occured: {}".format(cause))
         self.pipeline_root.unhandled_error_handler(cause)
 
+    @pipeline_thread.invoke_on_pipeline_thread_nowait
     def _on_unexpected_disconnection(self, cause):
         """
         Handler that gets called by the transport when the transport disconnects.  This handler only

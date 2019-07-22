@@ -30,7 +30,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="azure-iot-device",
-    version="2.0.0-preview.7",
+    version="2.0.0-preview.8",
     description="Microsoft Azure IoT Device Library",
     license="MIT License",
     url="https://github.com/Azure/azure-iot-sdk-python-preview",
@@ -63,6 +63,7 @@ setup(
         "requests>=2.20.0,<3.0.0",
         "requests-unixsocket>=0.1.5,<1.0.0",
         "janus>=0.4.0,<1.0.0;python_version>='3.5'",
+        "futures;python_version == '2.7'",
     ],
     extras_require={":python_version<'3.0'": ["azure-iot-nspkg>=1.0.1"]},
     python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3*, <4",
