@@ -94,7 +94,7 @@ class MessageTooLargeError(Exception):
     pass
 
 
-class ThrottlineError(Exception):
+class ThrottlingError(Exception):
     """
     Service returned 429
     """
@@ -146,6 +146,14 @@ class FailedStatusCodeError(Exception):
 class TransportError(Exception):
     """
     Error returned from protocol client library
+    """
+
+    pass
+
+
+class PipelineError(Exception):
+    """
+    Error returned from transport pipeline
     """
 
     pass

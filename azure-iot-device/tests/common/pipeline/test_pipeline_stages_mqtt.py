@@ -68,7 +68,12 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
     handled_ops=ops_handled_by_this_stage,
     all_events=all_common_events,
     handled_events=events_handled_by_this_stage,
-    methods_that_enter_pipeline_thread=["_on_message_received", "on_connected", "on_disconnected"],
+    methods_that_enter_pipeline_thread=[
+        "_handle_mqtt_message_received",
+        "_handle_mqtt_connected",
+        "_handle_mqtt_connection_failure",
+        "_handle_mqtt_disconnected",
+    ],
 )
 
 
@@ -82,8 +87,12 @@ def stage(mocker):
     stage.pipeline_root = root
 
     mocker.spy(root, "handle_pipeline_event")
-    mocker.spy(stage, "on_connected")
-    mocker.spy(stage, "on_disconnected")
+    mocker.spy(root, "on_connected")
+    mocker.spy(root, "on_disconnected")
+
+    mocker.spy(stage, "_handle_mqtt_connected")
+    mocker.spy(stage, "_handle_mqtt_connection_failure")
+    mocker.spy(stage, "_handle_mqtt_disconnected")
 
     return stage
 
@@ -133,9 +142,15 @@ class TestMQTTProviderRunOpWithSetConnectionArgs(object):
     )
     def test_sets_parameters(self, stage, transport, mocker, op_set_connection_args):
         stage.run_op(op_set_connection_args)
-        assert transport.return_value.on_mqtt_disconnected == stage.on_disconnected
-        assert transport.return_value.on_mqtt_connected == stage.on_connected
-        assert transport.return_value.on_mqtt_message_received == stage._on_message_received
+        assert transport.return_value.on_mqtt_disconnected == stage._handle_mqtt_disconnected
+        assert transport.return_value.on_mqtt_connected == stage._handle_mqtt_connected
+        assert (
+            transport.return_value.on_mqtt_connection_failure
+            == stage._handle_mqtt_connection_failure
+        )
+        assert (
+            transport.return_value.on_mqtt_message_received == stage._handle_mqtt_message_received
+        )
 
     @pytest.mark.it("Sets the transport attribute on the root of the pipeline")
     def test_sets_transport_attribute_on_root(self, stage, transport, op_set_connection_args):
@@ -196,8 +211,9 @@ connection_ops = [
             "transport_function": "connect",
             "transport_kwargs": {},
             "transport_handler": "on_mqtt_connected",
+            "transport_handler_success_args": [],
         },
-        id="ConnectOperation",
+        id="Connect",
     ),
     pytest.param(
         {
@@ -206,6 +222,7 @@ connection_ops = [
             "transport_function": "disconnect",
             "transport_kwargs": {},
             "transport_handler": "on_mqtt_disconnected",
+            "transport_handler_success_args": [None],
         },
         id="Disconnect",
     ),
@@ -216,6 +233,7 @@ connection_ops = [
             "transport_function": "reconnect",
             "transport_kwargs": {},
             "transport_handler": "on_mqtt_connected",
+            "transport_handler_success_args": [],
         },
         id="Reconnect",
     ),
@@ -265,7 +283,9 @@ def transport_function_succeeds(params, stage):
         if "callback" in kwargs:
             kwargs["callback"]()
         elif "transport_handler" in params:
-            getattr(stage.transport, params["transport_handler"])()
+            getattr(stage.transport, params["transport_handler"])(
+                *params["transport_handler_success_args"]
+            )
         else:
             assert False
 
@@ -334,64 +354,6 @@ class TestMQTTProviderBasicFunctionality(object):
             stage.run_op(op)
 
 
-@pytest.mark.parametrize("params", connection_ops)
-@pytest.mark.describe(
-    "MQTTClientStage - .run_op() -- called with op that connects, disconnects, or reconnects"
-)
-class TestMQTTProviderRunOpWithConnect(object):
-    @pytest.mark.it(
-        "Calls connected/disconnected event handler after the protocol client library function succeeds"
-    )
-    def test_calls_handler_on_success(
-        self, params, stage, create_transport, op, transport_function_succeeds
-    ):
-        stage.run_op(op)
-        assert getattr(stage.transport, params["transport_handler"]).call_count == 1
-
-    @pytest.mark.it("Restores transport handler after protocol client library function succeeds")
-    def test_restores_handler_on_success(
-        self, params, stage, create_transport, op, transport_function_succeeds
-    ):
-        handler_before = getattr(stage.transport, params["transport_handler"])
-        stage.run_op(op)
-        handler_after = getattr(stage.transport, params["transport_handler"])
-        assert handler_before == handler_after
-
-    @pytest.mark.it(
-        "Does not call connected/disconnected handler if there is an Exception in the protocol client library function"
-    )
-    def test_transport_function_throws_exception(
-        self,
-        params,
-        stage,
-        create_transport,
-        op,
-        mocker,
-        fake_exception,
-        transport_function_throws_exception,
-    ):
-        stage.run_op(op)
-        assert getattr(stage.transport, params["transport_handler"]).call_count == 0
-
-    @pytest.mark.it(
-        "Restores transport handler if there is an Exception in the protocol client library function"
-    )
-    def test_transport_function_throws_exception_2(
-        self,
-        params,
-        stage,
-        create_transport,
-        op,
-        mocker,
-        fake_exception,
-        transport_function_throws_exception,
-    ):
-        handler_before = getattr(stage.transport, params["transport_handler"])
-        stage.run_op(op)
-        handler_after = getattr(stage.transport, params["transport_handler"])
-        assert handler_before == handler_after
-
-
 @pytest.mark.describe("MQTTClientStage - EVENT: MQTT message received")
 class TestMQTTProviderProtocolClientEvents(object):
     @pytest.mark.it("Fires an IncomingMQTTMessageEvent event for each MQTT message received")
@@ -412,13 +374,105 @@ class TestMQTTProviderProtocolClientEvents(object):
 @pytest.mark.describe("MQTTClientStage - EVENT: MQTT connected")
 class TestMQTTProviderOnConnected(object):
     @pytest.mark.it(
-        "Calls self.on_connected and passes it up when the client library connected event fires"
+        "Calls self.on_connected and passes it up when the client library connected event fires, if there is no active connect op"
     )
     def test_connected_handler(self, stage, create_transport, mocker):
-        mocker.spy(stage.previous, "on_connected")
         assert stage.previous.on_connected.call_count == 0
         stage.transport.on_mqtt_connected()
         assert stage.previous.on_connected.call_count == 1
+
+    @pytest.mark.it("Completes an active connect op when the client library connected event fires")
+    def test_completes_active_connect_op(self, stage, create_transport, callback):
+        op = pipeline_ops_base.ConnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_connected()
+        assert_callback_succeeded(op=op)
+
+    @pytest.mark.it(
+        "Completes an active reconnect op when the client library connected event fires"
+    )
+    def test_completes_active_reconenct_op(self, stage, create_transport, callback):
+        op = pipeline_ops_base.ReconnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_connected()
+        assert_callback_succeeded(op=op)
+
+    @pytest.mark.it(
+        "Calls self.on_connected and passes it up when the client library connected event fires, if there is an active connect op"
+    )
+    def test_calls_handler_with_active_connect_op(self, stage, create_transport, callback):
+        op = pipeline_ops_base.ConnectOperation(callback=callback)
+        stage.run_op(op)
+        assert stage.previous.on_connected.call_count == 0
+        stage.transport.on_mqtt_connected()
+        assert stage.previous.on_connected.call_count == 1
+
+    @pytest.mark.it(
+        "Calls self.on_connected and passes it up when the client library connected event fires, if there is an active reconnect op"
+    )
+    def test_calls_handler_with_active_reconnect_op(self, stage, create_transport, callback):
+        op = pipeline_ops_base.ReconnectOperation(callback=callback)
+        stage.run_op(op)
+        assert stage.previous.on_connected.call_count == 0
+        stage.transport.on_mqtt_connected()
+        assert stage.previous.on_connected.call_count == 1
+
+
+@pytest.mark.describe("MQTTClientStage - EVENT: MQTT connection failure")
+class TestMQTTProviderOnConnectionFailure(object):
+    @pytest.mark.it(
+        "Does not call on_connected when the connection failure event fires and there is no active connect op"
+    )
+    def test_does_not_call_handler_with_no_active_op(self, stage, create_transport, fake_exception):
+        assert stage.previous.on_connected.call_count == 0
+        stage.transport.on_mqtt_connection_failure(fake_exception)
+        assert stage.previous.on_connected.call_count == 0
+
+    @pytest.mark.it(
+        "Does not call on_connected when the connection failure event fires and there is an acitve connect op"
+    )
+    def test_does_not_call_handler_with_active_connect_op(
+        self, stage, create_transport, callback, fake_exception
+    ):
+        op = pipeline_ops_base.ConnectOperation(callback=callback)
+        stage.run_op(op)
+        assert stage.previous.on_connected.call_count == 0
+        stage.transport.on_mqtt_connection_failure(fake_exception)
+        assert stage.previous.on_connected.call_count == 0
+
+    @pytest.mark.it(
+        "Does not call on_connected when the connection failure event fires and there is an active reconnect op"
+    )
+    def test_does_not_call_handler_with_active_reconnect_op(
+        self, stage, create_transport, callback, fake_exception
+    ):
+        op = pipeline_ops_base.ReconnectOperation(callback=callback)
+        stage.run_op(op)
+        assert stage.previous.on_connected.call_count == 0
+        stage.transport.on_mqtt_connection_failure(fake_exception)
+        assert stage.previous.on_connected.call_count == 0
+
+    @pytest.mark.it("Fails an active connect op if the connection failure event fires")
+    def test_fails_active_connect_op(self, stage, create_transport, callback, fake_exception):
+        op = pipeline_ops_base.ConnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_connection_failure(fake_exception)
+        assert_callback_failed(op=op, error=fake_exception)
+
+    @pytest.mark.it("Fails an active reconnect op if the connection failure event fires")
+    def test_fails_active_reconnect_op(self, stage, create_transport, callback, fake_exception):
+        op = pipeline_ops_base.ReconnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_connection_failure(fake_exception)
+        assert_callback_failed(op=op, error=fake_exception)
 
 
 @pytest.mark.describe("MQTTClientStage - EVENT: MQTT disconencted")
@@ -427,7 +481,38 @@ class TestMQTTProviderOnDisconnected(object):
         "Calls self.on_disconnected and passes it up when the client library disconnected event fires"
     )
     def test_disconnected_handler(self, stage, create_transport, mocker):
-        mocker.spy(stage.previous, "on_disconnected")
         assert stage.previous.on_disconnected.call_count == 0
-        stage.transport.on_mqtt_disconnected()
+        stage.transport.on_mqtt_disconnected(None)
         assert stage.previous.on_disconnected.call_count == 1
+
+    @pytest.mark.it(
+        "Calls self.on_disconnected and passes it up when the client library disconnected event fires with error"
+    )
+    def test_disconnected_handler_with_error(self, stage, create_transport, mocker, fake_exception):
+        assert stage.previous.on_disconnected.call_count == 0
+        stage.transport.on_mqtt_disconnected(fake_exception)
+        assert stage.previous.on_disconnected.call_count == 1
+
+    @pytest.mark.it(
+        "Completes an active disconnect op when the client library disconnected event fires"
+    )
+    def test_compltetes_active_disconnect_op_when_no_error(self, stage, create_transport, callback):
+        op = pipeline_ops_base.DisconnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_disconnected(None)
+        assert_callback_succeeded(op=op)
+
+    @pytest.mark.it(
+        "Completes an active disconnect op with no error when the client library disconnected event fires with error"
+    )
+    def test_completes_active_disconnect_op_when_error(
+        self, stage, create_transport, callback, fake_exception
+    ):
+        op = pipeline_ops_base.DisconnectOperation(callback=callback)
+        callback.reset_mock()
+        stage.run_op(op)
+        assert callback.call_count == 0
+        stage.transport.on_mqtt_disconnected(fake_exception)
+        assert_callback_failed(op=op, error=fake_exception)
