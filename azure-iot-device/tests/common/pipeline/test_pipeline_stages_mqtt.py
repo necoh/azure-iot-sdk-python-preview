@@ -354,7 +354,6 @@ class TestMQTTProviderBasicFunctionality(object):
             stage.run_op(op)
 
 
-
 @pytest.mark.describe("MQTTTransportStage - EVENT: MQTT message received")
 class TestMQTTProviderProtocolClientEvents(object):
     @pytest.mark.it("Fires an IncomingMQTTMessageEvent event for each MQTT message received")
