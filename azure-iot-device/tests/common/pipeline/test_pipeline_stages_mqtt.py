@@ -62,7 +62,7 @@ events_handled_by_this_stage = []
 
 
 pipeline_stage_test.add_base_pipeline_stage_tests(
-    cls=pipeline_stages_mqtt.MQTTClientStage,
+    cls=pipeline_stages_mqtt.MQTTTransportStage,
     module=this_module,
     all_ops=all_common_ops,
     handled_ops=ops_handled_by_this_stage,
@@ -79,7 +79,7 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
 
 @pytest.fixture
 def stage(mocker):
-    stage = pipeline_stages_mqtt.MQTTClientStage()
+    stage = pipeline_stages_mqtt.MQTTTransportStage()
     root = pipeline_stages_base.PipelineRootStage()
 
     stage.previous = root
@@ -117,7 +117,7 @@ def op_set_connection_args(callback):
 
 
 @pytest.mark.describe(
-    "MQTTClientStage - .run_op() -- called with pipeline_ops_mqtt.SetMQTTConnectionArgsOperation"
+    "MQTTTransportStage - .run_op() -- called with pipeline_ops_mqtt.SetMQTTConnectionArgsOperation"
 )
 class TestMQTTProviderRunOpWithSetConnectionArgs(object):
     @pytest.mark.it("Creates an MQTTTransport object")
@@ -181,7 +181,7 @@ def op_set_client_certificate(callback):
     )
 
 
-@pytest.mark.describe("MQTTClientStage - .run_op() -- called with SetSasToken")
+@pytest.mark.describe("MQTTTransportStage - .run_op() -- called with SetSasToken")
 class TestMQTTProviderRunOpWithSetSasToken(object):
     @pytest.mark.it("Saves the sas token")
     def test_saves_sas_token(self, stage, op_set_sas_token):
@@ -306,7 +306,7 @@ def transport_function_throws_base_exception(params, stage, mocker, fake_base_ex
 
 @pytest.mark.parametrize("params", connection_ops + pubsub_ops)
 @pytest.mark.describe(
-    "MQTTClientStage - .run_op() -- called with op that maps directly to protocol client library calls"
+    "MQTTTransportStage - .run_op() -- called with op that maps directly to protocol client library calls"
 )
 class TestMQTTProviderBasicFunctionality(object):
     @pytest.mark.it("Calls the appropriate function on the protocol client library")
@@ -354,7 +354,8 @@ class TestMQTTProviderBasicFunctionality(object):
             stage.run_op(op)
 
 
-@pytest.mark.describe("MQTTClientStage - EVENT: MQTT message received")
+
+@pytest.mark.describe("MQTTTransportStage - EVENT: MQTT message received")
 class TestMQTTProviderProtocolClientEvents(object):
     @pytest.mark.it("Fires an IncomingMQTTMessageEvent event for each MQTT message received")
     def test_incoming_message_handler(self, stage, create_transport, mocker):
@@ -371,7 +372,7 @@ class TestMQTTProviderProtocolClientEvents(object):
         assert call_arg.topic == fake_topic
 
 
-@pytest.mark.describe("MQTTClientStage - EVENT: MQTT connected")
+@pytest.mark.describe("MQTTTransportStage - EVENT: MQTT connected")
 class TestMQTTProviderOnConnected(object):
     @pytest.mark.it(
         "Calls self.on_connected and passes it up when the client library connected event fires, if there is no active connect op"
@@ -422,7 +423,7 @@ class TestMQTTProviderOnConnected(object):
         assert stage.previous.on_connected.call_count == 1
 
 
-@pytest.mark.describe("MQTTClientStage - EVENT: MQTT connection failure")
+@pytest.mark.describe("MQTTTarnsportStage - EVENT: MQTT connection failure")
 class TestMQTTProviderOnConnectionFailure(object):
     @pytest.mark.it(
         "Does not call on_connected when the connection failure event fires and there is no active connect op"
@@ -475,7 +476,7 @@ class TestMQTTProviderOnConnectionFailure(object):
         assert_callback_failed(op=op, error=fake_exception)
 
 
-@pytest.mark.describe("MQTTClientStage - EVENT: MQTT disconencted")
+@pytest.mark.describe("MQTTTransportStage - EVENT: MQTT disconencted")
 class TestMQTTProviderOnDisconnected(object):
     @pytest.mark.it(
         "Calls self.on_disconnected and passes it up when the client library disconnected event fires"

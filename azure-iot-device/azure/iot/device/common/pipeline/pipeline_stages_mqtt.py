@@ -19,7 +19,7 @@ from azure.iot.device.common import unhandled_exceptions, errors
 logger = logging.getLogger(__name__)
 
 
-class MQTTClientStage(PipelineStage):
+class MQTTTransportStage(PipelineStage):
     """
     PipelineStage object which is responsible for interfacing with the MQTT protocol wrapper object.
     This stage handles all MQTT operations and any other operations (such as ConnectOperation) which
@@ -59,7 +59,7 @@ class MQTTClientStage(PipelineStage):
             self.client_id = op.client_id
             self.ca_cert = op.ca_cert
             self.sas_token = None
-            self.trusted_certificate_chain = None
+            self.client_cert = None
             self.transport = MQTTTransport(
                 client_id=self.client_id,
                 hostname=self.hostname,
@@ -84,7 +84,7 @@ class MQTTClientStage(PipelineStage):
         elif isinstance(op, pipeline_ops_base.SetClientAuthenticationCertificateOperation):
             # When we get a certificate from above, we just save it for later
             logger.info("{}({}): got certificate".format(self.name, op.name))
-            self.trusted_certificate_chain = op.certificate
+            self.client_cert = op.certificate
             operation_flow.complete_op(self, op)
 
         elif isinstance(op, pipeline_ops_base.ConnectOperation):
@@ -93,9 +93,7 @@ class MQTTClientStage(PipelineStage):
             self._cancel_active_connect_disconnect_ops()
             self._active_connect_op = op
             try:
-                self.transport.connect(
-                    password=self.sas_token, client_certificate=self.trusted_certificate_chain
-                )
+                self.transport.connect(password=self.sas_token, client_certificate=self.client_cert)
             except Exception as e:
                 self._active_connect_op = None
                 raise e
