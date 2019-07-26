@@ -44,7 +44,7 @@ fake_device_id = "elder_wand"
 fake_registration_id = "registered_remembrall"
 fake_provisioning_host = "hogwarts.com"
 fake_id_scope = "weasley_wizard_wheezes"
-fake_ca_cert = "fake_client_cert"
+fake_ca_cert = "fake_ca_cert"
 fake_sas_token = "horcrux_token"
 
 
