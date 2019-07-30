@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 
 import logging
+import six
 from . import (
     pipeline_ops_base,
     PipelineStage,
@@ -204,7 +205,7 @@ class MQTTTransportStage(PipelineStage):
         # the real problem at this point.
         if cause:
             try:
-                raise errors.ConnectionDroppedError from cause
+                six.raise_from(errors.ConnectionDroppedError,cause)
             except errors.ConnectionDroppedError as e:
                 cause = e
 

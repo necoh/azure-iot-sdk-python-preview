@@ -6,6 +6,7 @@
 import logging
 import pytest
 import sys
+import six
 from azure.iot.device.common import errors
 from azure.iot.device.common.pipeline import (
     pipeline_ops_base,
@@ -478,4 +479,5 @@ class TestMQTTProviderOnDisconnected(object):
         stage.transport.on_mqtt_disconnected(fake_exception)
         assert_callback_failed(op=op)
         assert isinstance(op.error, errors.ConnectionDroppedError)
-        assert op.error.__cause__ == fake_exception
+        if six.PY3:
+            assert op.error.__cause__ == fake_exception
