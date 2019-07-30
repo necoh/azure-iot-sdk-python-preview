@@ -205,7 +205,7 @@ class MQTTTransportStage(PipelineStage):
         # the real problem at this point.
         if cause:
             try:
-                six.raise_from(errors.ConnectionDroppedError,cause)
+                six.raise_from(errors.ConnectionDroppedError, cause)
             except errors.ConnectionDroppedError as e:
                 cause = e
 
