@@ -6,6 +6,7 @@
 
 from azure.iot.device.common.mqtt_transport import MQTTTransport, OperationManager
 from azure.iot.device.common.models.x509 import X509
+from azure.iot.device.common import errors
 import paho.mqtt.client as mqtt
 import ssl
 import copy
@@ -24,6 +25,7 @@ fake_payload = "Tarantallegra"
 fake_qos = 1
 fake_mid = 52
 fake_rc = 0
+failed_conack_rc = mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED
 
 
 class DummyException(Exception):
@@ -33,6 +35,83 @@ class DummyException(Exception):
 class UnhandledException(BaseException):
     pass
 
+# mapping of Paho conack rc codes to Error object classes
+conack_return_codes = [
+    {
+        "name": "CONNACK_REFUSED_PROTOCOL_VERSION",
+        "rc": mqtt.CONNACK_REFUSED_PROTOCOL_VERSION,
+        "error": errors.TransportError,
+    },
+    {
+        "name": "CONNACK_REFUSED_IDENTIFIER_REJECTED",
+        "rc": mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED,
+        "error": errors.TransportError,
+    },
+    {
+        "name": "CONNACK_REFUSED_SERVER_UNAVAILABLE",
+        "rc": mqtt.CONNACK_REFUSED_SERVER_UNAVAILABLE,
+        "error": errors.ConnectionFailedError,
+    },
+    {
+        "name": "CONNACK_REFUSED_BAD_USERNAME_PASSWORD",
+        "rc": mqtt.CONNACK_REFUSED_BAD_USERNAME_PASSWORD,
+        "error": errors.UnauthorizedError,
+    },
+    {
+        "name": "CONNACK_REFUSED_NOT_AUTHORIZED",
+        "rc": mqtt.CONNACK_REFUSED_NOT_AUTHORIZED,
+        "error": errors.UnauthorizedError,
+    },
+]
+
+
+# mapping of Paho rc codes to Error object classes
+operation_return_codes = [
+    {"name": "MQTT_ERR_NOMEM", "rc": mqtt.MQTT_ERR_NOMEM, "error": errors.TransportError},
+    {"name": "MQTT_ERR_PROTOCOL", "rc": mqtt.MQTT_ERR_PROTOCOL, "error": errors.TransportError},
+    {"name": "MQTT_ERR_INVAL", "rc": mqtt.MQTT_ERR_INVAL, "error": errors.ArgumentError},
+    {
+        "name": "MQTT_ERR_NO_CONN",
+        "rc": mqtt.MQTT_ERR_NO_CONN,
+        "error": errors.ConnectionDroppedError,
+    },
+    {
+        "name": "MQTT_ERR_CONN_REFUSED",
+        "rc": mqtt.MQTT_ERR_CONN_REFUSED,
+        "error": errors.ConnectionFailedError,
+    },
+    {
+        "name": "MQTT_ERR_NOT_FOUND",
+        "rc": mqtt.MQTT_ERR_NOT_FOUND,
+        "error": errors.ConnectionFailedError,
+    },
+    {
+        "name": "MQTT_ERR_CONN_LOST",
+        "rc": mqtt.MQTT_ERR_CONN_LOST,
+        "error": errors.ConnectionDroppedError,
+    },
+    {"name": "MQTT_ERR_TLS", "rc": mqtt.MQTT_ERR_TLS, "error": errors.UnauthorizedError},
+    {
+        "name": "MQTT_ERR_PAYLOAD_SIZE",
+        "rc": mqtt.MQTT_ERR_PAYLOAD_SIZE,
+        "error": errors.TransportError,
+    },
+    {
+        "name": "MQTT_ERR_NOT_SUPPORTED",
+        "rc": mqtt.MQTT_ERR_NOT_SUPPORTED,
+        "error": errors.TransportError,
+    },
+    {"name": "MQTT_ERR_AUTH", "rc": mqtt.MQTT_ERR_AUTH, "error": errors.UnauthorizedError},
+    {
+        "name": "MQTT_ERR_ACL_DENIED",
+        "rc": mqtt.MQTT_ERR_ACL_DENIED,
+        "error": errors.UnauthorizedError,
+    },
+    {"name": "MQTT_ERR_UNKNOWN", "rc": mqtt.MQTT_ERR_UNKNOWN, "error": errors.TransportError},
+    {"name": "MQTT_ERR_ERRNO", "rc": mqtt.MQTT_ERR_ERRNO, "error": errors.TransportError},
+    {"name": "MQTT_ERR_QUEUE_SIZE", "rc": mqtt.MQTT_ERR_QUEUE_SIZE, "error": errors.TransportError},
+]
+
 
 @pytest.fixture
 def mock_mqtt_client(mocker):
@@ -40,6 +119,10 @@ def mock_mqtt_client(mocker):
     mock_mqtt_client = mock.return_value
     mock_mqtt_client.subscribe = mocker.MagicMock(return_value=(fake_rc, fake_mid))
     mock_mqtt_client.unsubscribe = mocker.MagicMock(return_value=(fake_rc, fake_mid))
+    mock_mqtt_client.publish = mocker.MagicMock(return_value=(fake_rc, fake_mid))
+    mock_mqtt_client.connect.return_value = 0
+    mock_mqtt_client.reconnect.return_value = 0
+    mock_mqtt_client.disconnect.return_value = 0
     return mock_mqtt_client
 
 
@@ -218,6 +301,19 @@ class TestConnect(object):
 
         assert mock_mqtt_client.loop_start.call_count == 1
         assert mock_mqtt_client.loop_start.call_args == mocker.call()
+        
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if connect returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.connect.return_value = error_params["rc"]
+        with pytest.raises(error_params["error"]):
+            transport.connect(fake_password)
 
 
 @pytest.mark.describe("MQTTTransport - .reconnect()")
@@ -255,6 +351,19 @@ class TestReconnect(object):
 
         assert mock_mqtt_client.reconnect.call_count == 1
         assert mock_mqtt_client.reconnect.call_args == mocker.call()
+        
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if reconnect returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.reconnect.return_value = error_params["rc"]
+        with pytest.raises(error_params["error"]):
+            transport.reconnect(fake_password)
 
 
 @pytest.mark.describe("MQTTTransport - EVENT: Connect Completed")
@@ -311,6 +420,74 @@ class TestEventConnectComplete(object):
             )
 
 
+@pytest.mark.describe("MQTTTransport - EVENT: Connection Failure")
+class TestEventConnectionFailure(object):
+    @pytest.mark.parametrize(
+        "error_params",
+        conack_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in conack_return_codes],
+    )
+    @pytest.mark.it(
+        "Triggers on_mqtt_connection_failure event handler callback upon connect completion with failed RC"
+    )
+    def test_calls_event_handler_callback_with_failed_rc(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        callback = mocker.MagicMock()
+        transport.on_mqtt_connection_failure = callback
+
+        # Initiate connect
+        transport.connect(fake_password)
+
+        # Manually trigger Paho on_connect event_handler
+        mock_mqtt_client.on_connect(
+            client=mock_mqtt_client, userdata=None, flags=None, rc=error_params["rc"]
+        )
+
+        # Verify transport.on_mqtt_connection_failure was called
+        assert callback.call_count == 1
+        assert isinstance(callback.call_args[0][0], error_params["error"])
+        
+    @pytest.mark.it(
+        "Skips on_mqtt_connection_failure event handler callback if set to 'None' upon connect completion with failed RC"
+    )
+    def test_skips_none_event_handler_callback(self, mocker, mock_mqtt_client, transport):
+        assert transport.on_mqtt_connection_failure is None
+
+        transport.connect(fake_password)
+
+        mock_mqtt_client.on_connect(client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc)
+
+        # No further asserts required - this is a test to show that it skips a callback.
+        # Not raising an exception == test passed
+
+    @pytest.mark.it("Recovers from Exception in on_mqtt_connection_failure event handler callback")
+    def test_event_handler_callback_raises_exception(self, mocker, mock_mqtt_client, transport):
+        event_cb = mocker.MagicMock(side_effect=DummyException)
+        transport.on_mqtt_connection_failure = event_cb
+
+        transport.connect(fake_password)
+        mock_mqtt_client.on_connect(client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc)
+
+        # Callback was called, but exception did not propagate
+        assert event_cb.call_count == 1
+
+    @pytest.mark.it(
+        "Allows any BaseExceptions raised in on_mqtt_connection_failure event handler callback to propagate"
+    )
+    def test_event_handler_callback_raises_base_exception(
+        self, mocker, mock_mqtt_client, transport
+    ):
+        event_cb = mocker.MagicMock(side_effect=UnhandledException)
+        transport.on_mqtt_connection_failure = event_cb
+
+        transport.connect(fake_password)
+        with pytest.raises(UnhandledException):
+            mock_mqtt_client.on_connect(
+                client=mock_mqtt_client, userdata=None, flags=None, rc=rc=failed_conack_rc
+            )
+
+            
 @pytest.mark.describe("MQTTTransport - .disconnect()")
 class TestDisconnect(object):
     @pytest.mark.it("Initiates MQTT disconnect via Paho")
@@ -326,6 +503,20 @@ class TestDisconnect(object):
 
         assert mock_mqtt_client.loop_stop.call_count == 1
         assert mock_mqtt_client.loop_stop.call_args == mocker.call()
+        
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if disconnect returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.disconnect.return_value = error_params["rc"]
+        with pytest.raises(error_params["error"]):
+            transport.disconnect()
+
 
 
 @pytest.mark.describe("MQTTTransport - EVENT: Disconnect Completed")
@@ -347,7 +538,33 @@ class TestEventDisconnectCompleted(object):
 
         # Verify transport.on_mqtt_connected was called
         assert callback.call_count == 1
-        assert callback.call_args == mocker.call()
+        assert callback.call_args == mocker.call(None)
+        
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it(
+        "Triggers on_mqtt_disconnected event handler callback when an error RC is returned upon disconnect competion."
+    )
+    def test_calls_event_handler_callback_with_failure_user_driven(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        callback = mocker.MagicMock()
+        transport.on_mqtt_disconnected = callback
+
+        # Initiate disconnect
+        transport.disconnect()
+
+        # Manually trigger Paho on_disconnect event_handler
+        mock_mqtt_client.on_disconnect(
+            client=mock_mqtt_client, userdata=None, rc=error_params["rc"]
+        )
+
+        # Verify transport.on_mqtt_disconnected was called
+        assert callback.call_count == 1
+        assert isinstance(callback.call_args[0][0], error_params["error"])
 
     @pytest.mark.it(
         "Skips on_mqtt_disconnected event handler callback if set to 'None' upon disconnect completion"
@@ -625,6 +842,20 @@ class TestSubscribe(object):
         # Initiate subscribe
         with pytest.raises(UnhandledException):
             transport.subscribe(topic=fake_topic, qos=fake_qos, callback=callback)
+            
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if subscribe returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.subscribe.return_value = (error_params["rc"], 0)
+        with pytest.raises(error_params["error"]):
+            transport.subscribe(topic=fake_topic, qos=fake_qos, callback=None)
+
 
 
 @pytest.mark.describe("MQTTTransport - .unsubscribe()")
@@ -835,6 +1066,19 @@ class TestUnsubscribe(object):
         # Initiate unsubscribe
         with pytest.raises(UnhandledException):
             transport.unsubscribe(topic=fake_topic, callback=callback)
+            
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if unsubscribe returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.unsubscribe.return_value = (error_params["rc"], 0)
+        with pytest.raises(error_params["error"]):
+            transport.unsubscribe(topic=fake_topic, callback=None)
 
 
 @pytest.mark.describe("MQTTTransport - .publish()")
@@ -1097,6 +1341,19 @@ class TestPublish(object):
         with pytest.raises(UnhandledException):
             transport.publish(topic=fake_topic, payload=fake_payload, callback=callback)
 
+    @pytest.mark.parametrize(
+        "error_params",
+        operation_return_codes,
+        ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
+    )
+    @pytest.mark.it("Raises an Exception if publish returns a failing rc code")
+    def test_transport_returns_failing_rc_code(
+        self, mocker, mock_mqtt_client, transport, error_params
+    ):
+        mock_mqtt_client.publish.return_value = (error_params["rc"], 0)
+        with pytest.raises(error_params["error"]):
+            transport.publish(topic=fake_topic, payload=fake_payload, callback=None)
+            
 
 @pytest.mark.describe("MQTTTransport - EVENT: Message Received")
 class TestMessageReceived(object):
