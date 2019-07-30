@@ -157,3 +157,33 @@ class PipelineError(Exception):
     """
 
     pass
+
+
+status_code_to_error = {
+    400: ArgumentError,
+    401: UnauthorizedError,
+    403: QuotaExceededError,
+    404: NotFoundError,
+    408: DeviceTimeoutError,
+    409: DeviceAlreadyExistsError,
+    412: InvalidEtagError,
+    413: MessageTooLargeError,
+    429: ThrottlingError,
+    500: InternalServiceError,
+    502: BadDeviceResponseError,
+    503: ServiceUnavailableError,
+    504: TimeoutError,
+}
+
+
+def error_from_status_code(status_code, message=None):
+    """
+    Return an Error object from a failed status code
+
+    :param int status_code: Status code returned from failed operation
+    :returns: Error object
+    """
+    if status_code in status_code_to_error:
+        return status_code_to_error[status_code](message)
+    else:
+        return FailedStatusCodeError(message)

@@ -200,6 +200,14 @@ class MQTTTransportStage(PipelineStage):
         # we do anything else (in case upper stages have any "are we connected" logic.
         self.on_disconnected()
 
+        # regardless of the cause, we wrap it in a ConnectionDroppedError object because that's
+        # the real problem at this point.
+        if cause:
+            try:
+                raise errors.ConnectionDroppedError from cause
+            except errors.ConnectionDroppedError as e:
+                cause = e
+
         if self._active_disconnect_op:
             logger.info("{}: completing disconnect op".format(self.name))
             op = self._active_disconnect_op

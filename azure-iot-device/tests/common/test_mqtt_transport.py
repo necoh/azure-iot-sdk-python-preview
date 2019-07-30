@@ -35,6 +35,7 @@ class DummyException(Exception):
 class UnhandledException(BaseException):
     pass
 
+
 # mapping of Paho conack rc codes to Error object classes
 conack_return_codes = [
     {
@@ -231,7 +232,7 @@ class TestInstantiation(object):
         assert callable(mock_mqtt_client.on_publish)
         assert callable(mock_mqtt_client.on_message)
 
-    @pytest.mark.it("Initializes event handler callbacks to 'None'")
+    @pytest.mark.it("Initializes event handlers to 'None'")
     def test_handler_callbacks_set_to_none(self, mocker):
         mocker.patch.object(mqtt, "Client")
 
@@ -301,13 +302,13 @@ class TestConnect(object):
 
         assert mock_mqtt_client.loop_start.call_count == 1
         assert mock_mqtt_client.loop_start.call_args == mocker.call()
-        
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if connect returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if connect returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
@@ -351,13 +352,13 @@ class TestReconnect(object):
 
         assert mock_mqtt_client.reconnect.call_count == 1
         assert mock_mqtt_client.reconnect.call_args == mocker.call()
-        
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if reconnect returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if reconnect returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
@@ -368,7 +369,7 @@ class TestReconnect(object):
 
 @pytest.mark.describe("MQTTTransport - EVENT: Connect Completed")
 class TestEventConnectComplete(object):
-    @pytest.mark.it("Triggers on_mqtt_connected event handler callback upon connect completion")
+    @pytest.mark.it("Triggers on_mqtt_connected event handler upon successful connect completion")
     def test_calls_event_handler_callback(self, mocker, mock_mqtt_client, transport):
         callback = mocker.MagicMock()
         transport.on_mqtt_connected = callback
@@ -381,7 +382,7 @@ class TestEventConnectComplete(object):
         assert callback.call_args == mocker.call()
 
     @pytest.mark.it(
-        "Skips on_mqtt_connected event handler callback if set to 'None' upon connect completion"
+        "Skips on_mqtt_connected event handler if set to 'None' upon successful connect completion"
     )
     def test_skips_none_event_handler_callback(self, mocker, mock_mqtt_client, transport):
         assert transport.on_mqtt_connected is None
@@ -393,7 +394,7 @@ class TestEventConnectComplete(object):
         # No further asserts required - this is a test to show that it skips a callback.
         # Not raising an exception == test passed
 
-    @pytest.mark.it("Recovers from Exception in on_mqtt_connected event handler callback")
+    @pytest.mark.it("Recovers from Exception in on_mqtt_connected event handler")
     def test_event_handler_callback_raises_exception(self, mocker, mock_mqtt_client, transport):
         event_cb = mocker.MagicMock(side_effect=DummyException)
         transport.on_mqtt_connected = event_cb
@@ -405,7 +406,7 @@ class TestEventConnectComplete(object):
         assert event_cb.call_count == 1
 
     @pytest.mark.it(
-        "Allows any BaseExceptions raised in on_mqtt_connected event handler callback to propagate"
+        "Allows any BaseExceptions raised in on_mqtt_connected event handler to propagate"
     )
     def test_event_handler_callback_raises_base_exception(
         self, mocker, mock_mqtt_client, transport
@@ -428,7 +429,7 @@ class TestEventConnectionFailure(object):
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in conack_return_codes],
     )
     @pytest.mark.it(
-        "Triggers on_mqtt_connection_failure event handler callback upon connect completion with failed RC"
+        "Triggers on_mqtt_connection_failure event handler with custom Exception upon failed connect completion"
     )
     def test_calls_event_handler_callback_with_failed_rc(
         self, mocker, mock_mqtt_client, transport, error_params
@@ -447,33 +448,37 @@ class TestEventConnectionFailure(object):
         # Verify transport.on_mqtt_connection_failure was called
         assert callback.call_count == 1
         assert isinstance(callback.call_args[0][0], error_params["error"])
-        
+
     @pytest.mark.it(
-        "Skips on_mqtt_connection_failure event handler callback if set to 'None' upon connect completion with failed RC"
+        "Skips on_mqtt_connection_failure event handler if set to 'None' upon failed connect completion"
     )
     def test_skips_none_event_handler_callback(self, mocker, mock_mqtt_client, transport):
         assert transport.on_mqtt_connection_failure is None
 
         transport.connect(fake_password)
 
-        mock_mqtt_client.on_connect(client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc)
+        mock_mqtt_client.on_connect(
+            client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc
+        )
 
         # No further asserts required - this is a test to show that it skips a callback.
         # Not raising an exception == test passed
 
-    @pytest.mark.it("Recovers from Exception in on_mqtt_connection_failure event handler callback")
+    @pytest.mark.it("Recovers from Exception in on_mqtt_connection_failure event handler")
     def test_event_handler_callback_raises_exception(self, mocker, mock_mqtt_client, transport):
         event_cb = mocker.MagicMock(side_effect=DummyException)
         transport.on_mqtt_connection_failure = event_cb
 
         transport.connect(fake_password)
-        mock_mqtt_client.on_connect(client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc)
+        mock_mqtt_client.on_connect(
+            client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc
+        )
 
         # Callback was called, but exception did not propagate
         assert event_cb.call_count == 1
 
     @pytest.mark.it(
-        "Allows any BaseExceptions raised in on_mqtt_connection_failure event handler callback to propagate"
+        "Allows any BaseExceptions raised in on_mqtt_connection_failure event handler to propagate"
     )
     def test_event_handler_callback_raises_base_exception(
         self, mocker, mock_mqtt_client, transport
@@ -484,10 +489,10 @@ class TestEventConnectionFailure(object):
         transport.connect(fake_password)
         with pytest.raises(UnhandledException):
             mock_mqtt_client.on_connect(
-                client=mock_mqtt_client, userdata=None, flags=None, rc=rc=failed_conack_rc
+                client=mock_mqtt_client, userdata=None, flags=None, rc=failed_conack_rc
             )
 
-            
+
 @pytest.mark.describe("MQTTTransport - .disconnect()")
 class TestDisconnect(object):
     @pytest.mark.it("Initiates MQTT disconnect via Paho")
@@ -503,13 +508,13 @@ class TestDisconnect(object):
 
         assert mock_mqtt_client.loop_stop.call_count == 1
         assert mock_mqtt_client.loop_stop.call_args == mocker.call()
-        
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if disconnect returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if disconnect returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
@@ -518,12 +523,9 @@ class TestDisconnect(object):
             transport.disconnect()
 
 
-
 @pytest.mark.describe("MQTTTransport - EVENT: Disconnect Completed")
 class TestEventDisconnectCompleted(object):
-    @pytest.mark.it(
-        "Triggers on_mqtt_disconnected event handler callback upon disconnect completion"
-    )
+    @pytest.mark.it("Triggers on_mqtt_disconnected event handler upon disconnect completion")
     def test_calls_event_handler_callback_externally_driven(
         self, mocker, mock_mqtt_client, transport
     ):
@@ -539,14 +541,14 @@ class TestEventDisconnectCompleted(object):
         # Verify transport.on_mqtt_connected was called
         assert callback.call_count == 1
         assert callback.call_args == mocker.call(None)
-        
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
     @pytest.mark.it(
-        "Triggers on_mqtt_disconnected event handler callback when an error RC is returned upon disconnect competion."
+        "Triggers on_mqtt_disconnected event handler with custom Exception when an error RC is returned upon disconnect competion."
     )
     def test_calls_event_handler_callback_with_failure_user_driven(
         self, mocker, mock_mqtt_client, transport, error_params
@@ -567,7 +569,7 @@ class TestEventDisconnectCompleted(object):
         assert isinstance(callback.call_args[0][0], error_params["error"])
 
     @pytest.mark.it(
-        "Skips on_mqtt_disconnected event handler callback if set to 'None' upon disconnect completion"
+        "Skips on_mqtt_disconnected event handler if set to 'None' upon disconnect completion"
     )
     def test_skips_none_event_handler_callback(self, mocker, mock_mqtt_client, transport):
         assert transport.on_mqtt_disconnected is None
@@ -579,7 +581,7 @@ class TestEventDisconnectCompleted(object):
         # No further asserts required - this is a test to show that it skips a callback.
         # Not raising an exception == test passed
 
-    @pytest.mark.it("Recovers from Exception in on_mqtt_disconnected event handler callback")
+    @pytest.mark.it("Recovers from Exception in on_mqtt_disconnected event handler")
     def test_event_handler_callback_raises_exception(self, mocker, mock_mqtt_client, transport):
         event_cb = mocker.MagicMock(side_effect=DummyException)
         transport.on_mqtt_disconnected = event_cb
@@ -591,7 +593,7 @@ class TestEventDisconnectCompleted(object):
         assert event_cb.call_count == 1
 
     @pytest.mark.it(
-        "Allows any BaseExceptions raised in on_mqtt_disconnected event handler callback to propagate"
+        "Allows any BaseExceptions raised in on_mqtt_disconnected event handler to propagate"
     )
     def test_event_handler_callback_raises_base_exception(
         self, mocker, mock_mqtt_client, transport
@@ -842,20 +844,19 @@ class TestSubscribe(object):
         # Initiate subscribe
         with pytest.raises(UnhandledException):
             transport.subscribe(topic=fake_topic, qos=fake_qos, callback=callback)
-            
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if subscribe returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if subscribe returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
         mock_mqtt_client.subscribe.return_value = (error_params["rc"], 0)
         with pytest.raises(error_params["error"]):
             transport.subscribe(topic=fake_topic, qos=fake_qos, callback=None)
-
 
 
 @pytest.mark.describe("MQTTTransport - .unsubscribe()")
@@ -1066,13 +1067,13 @@ class TestUnsubscribe(object):
         # Initiate unsubscribe
         with pytest.raises(UnhandledException):
             transport.unsubscribe(topic=fake_topic, callback=callback)
-            
+
     @pytest.mark.parametrize(
         "error_params",
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if unsubscribe returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if unsubscribe returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
@@ -1346,14 +1347,14 @@ class TestPublish(object):
         operation_return_codes,
         ids=["{}->{}".format(x["name"], x["error"].__name__) for x in operation_return_codes],
     )
-    @pytest.mark.it("Raises an Exception if publish returns a failing rc code")
+    @pytest.mark.it("Raises a custom Exception if publish returns a failing rc code")
     def test_transport_returns_failing_rc_code(
         self, mocker, mock_mqtt_client, transport, error_params
     ):
         mock_mqtt_client.publish.return_value = (error_params["rc"], 0)
         with pytest.raises(error_params["error"]):
             transport.publish(topic=fake_topic, payload=fake_payload, callback=None)
-            
+
 
 @pytest.mark.describe("MQTTTransport - EVENT: Message Received")
 class TestMessageReceived(object):
@@ -1364,9 +1365,7 @@ class TestMessageReceived(object):
         message.qos = fake_qos
         return message
 
-    @pytest.mark.it(
-        "Triggers on_mqtt_message_received event handler callback upon receiving message"
-    )
+    @pytest.mark.it("Triggers on_mqtt_message_received event handler upon receiving message")
     def test_calls_event_handler_callback(self, mocker, mock_mqtt_client, transport, message):
         callback = mocker.MagicMock()
         transport.on_mqtt_message_received = callback
@@ -1379,7 +1378,7 @@ class TestMessageReceived(object):
         assert callback.call_args == mocker.call(message.topic, message.payload)
 
     @pytest.mark.it(
-        "Skips on_mqtt_message_received event handler callback if set to 'None' upon receiving message"
+        "Skips on_mqtt_message_received event handler if set to 'None' upon receiving message"
     )
     def test_skips_none_event_handler_callback(self, mocker, mock_mqtt_client, transport, message):
         assert transport.on_mqtt_message_received is None
@@ -1390,7 +1389,7 @@ class TestMessageReceived(object):
         # No further asserts required - this is a test to show that it skips a callback.
         # Not raising an exception == test passed
 
-    @pytest.mark.it("Recovers from Exception in on_mqtt_message_received event handler callback")
+    @pytest.mark.it("Recovers from Exception in on_mqtt_message_received event handler")
     def test_event_handler_callback_raises_exception(
         self, mocker, mock_mqtt_client, transport, message
     ):
@@ -1403,7 +1402,7 @@ class TestMessageReceived(object):
         assert event_cb.call_count == 1
 
     @pytest.mark.it(
-        "Allows any BaseExceptions raised in on_mqtt_message_received event handler callback to propagate"
+        "Allows any BaseExceptions raised in on_mqtt_message_received event handler to propagate"
     )
     def test_event_handler_callback_raises_base_exception(
         self, mocker, mock_mqtt_client, transport, message
