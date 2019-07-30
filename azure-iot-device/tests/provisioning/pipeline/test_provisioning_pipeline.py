@@ -5,12 +5,15 @@
 # --------------------------------------------------------------------------
 
 import pytest
+import logging
 from mock import MagicMock, patch
 from azure.iot.device.common.models import X509
 from azure.iot.device.provisioning.security.sk_security_client import SymmetricKeySecurityClient
 from azure.iot.device.provisioning.security.x509_security_client import X509SecurityClient
 from azure.iot.device.provisioning.pipeline.provisioning_pipeline import ProvisioningPipeline
 from tests.common.pipeline import helpers
+
+logging.basicConfig(level=logging.INFO)
 
 send_msg_qos = 1
 
@@ -149,8 +152,7 @@ class TestConnect(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         mock_mqtt_transport.on_mqtt_connected()
         mock_provisioning_pipeline.wait_for_on_connected_to_be_called()
@@ -184,8 +186,7 @@ class TestConnect(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         mock_provisioning_pipeline.on_connected.assert_called_once_with("connected")
 
@@ -238,8 +239,7 @@ class TestSendRegister(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         fake_publish_topic = "$dps/registrations/PUT/iotdps-register/?$rid={}".format(
             fake_request_id
@@ -268,8 +268,7 @@ class TestSendRegister(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         # verify that we're not connected yet and verify that we havent't published yet
         mock_provisioning_pipeline.wait_for_on_connected_to_not_be_called()
@@ -307,8 +306,7 @@ class TestSendRegister(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         # send an event
         mock_provisioning_pipeline.send_request(
@@ -421,8 +419,7 @@ class TestSendQuery(object):
             assert mock_mqtt_transport.connect.call_args[1]["password"] is not None
             assert_for_symmetric_key(mock_mqtt_transport.connect.call_args[1]["password"])
         elif params_security_clients["client_class"].__name__ == "X509SecurityClient":
-            assert mock_mqtt_transport.connect.call_args[1]["client_certificate"] is not None
-            assert_for_client_x509(mock_mqtt_transport.connect.call_args[1]["client_certificate"])
+            assert mock_mqtt_transport.connect.call_args[1]["password"] is None
 
         fake_publish_topic = "$dps/registrations/GET/iotdps-get-operationstatus/?$rid={}&operationId={}".format(
             fake_request_id, fake_operation_id

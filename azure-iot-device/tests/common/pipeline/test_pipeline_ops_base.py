@@ -5,10 +5,12 @@
 # --------------------------------------------------------------------------
 import sys
 import pytest
+import logging
 from azure.iot.device.common.pipeline import pipeline_ops_base
 from tests.common.pipeline import pipeline_data_object_test
 
 this_module = sys.modules[__name__]
+logging.basicConfig(level=logging.INFO)
 
 
 @pytest.mark.describe("PipelineOperation")
@@ -50,12 +52,6 @@ pipeline_data_object_test.add_operation_test(
     positional_arguments=["feature_name"],
     keyword_arguments={"callback": None},
     extra_defaults={"needs_connection": True},
-)
-pipeline_data_object_test.add_operation_test(
-    cls=pipeline_ops_base.SetSasTokenOperation,
-    module=this_module,
-    positional_arguments=["sas_token"],
-    keyword_arguments={"callback": None},
 )
 pipeline_data_object_test.add_operation_test(
     cls=pipeline_ops_base.SendIotRequestAndWaitForResponseOperation,

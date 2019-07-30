@@ -58,13 +58,15 @@ class MQTTTransportStage(PipelineStage):
             self.username = op.username
             self.client_id = op.client_id
             self.ca_cert = op.ca_cert
-            self.sas_token = None
-            self.client_cert = None
+            self.sas_token = op.sas_token
+            self.client_cert = op.client_cert
+
             self.transport = MQTTTransport(
                 client_id=self.client_id,
                 hostname=self.hostname,
                 username=self.username,
                 ca_cert=self.ca_cert,
+                x509_cert=self.client_cert,
             )
             self.transport.on_mqtt_connected = self._handle_mqtt_connected
             self.transport.on_mqtt_connection_failure = self._handle_mqtt_connection_failure
@@ -75,25 +77,13 @@ class MQTTTransportStage(PipelineStage):
             self.pipeline_root.transport = self.transport
             operation_flow.complete_op(self, op)
 
-        elif isinstance(op, pipeline_ops_base.SetSasTokenOperation):
-            # When we get a sas token from above, we just save it for later
-            logger.info("{}({}): got password".format(self.name, op.name))
-            self.sas_token = op.sas_token
-            operation_flow.complete_op(self, op)
-
-        elif isinstance(op, pipeline_ops_base.SetClientAuthenticationCertificateOperation):
-            # When we get a certificate from above, we just save it for later
-            logger.info("{}({}): got certificate".format(self.name, op.name))
-            self.client_cert = op.certificate
-            operation_flow.complete_op(self, op)
-
         elif isinstance(op, pipeline_ops_base.ConnectOperation):
             logger.info("{}({}): connecting".format(self.name, op.name))
 
             self._cancel_active_connect_disconnect_ops()
             self._active_connect_op = op
             try:
-                self.transport.connect(password=self.sas_token, client_certificate=self.client_cert)
+                self.transport.connect(password=self.sas_token)
             except Exception as e:
                 self._active_connect_op = None
                 raise e
@@ -105,7 +95,7 @@ class MQTTTransportStage(PipelineStage):
             self._cancel_active_connect_disconnect_ops()
             self._active_connect_op = op
             try:
-                self.transport.reconnect(self.sas_token)
+                self.transport.reconnect(password=self.sas_token)
             except Exception as e:
                 self._active_connect_op = None
                 raise e

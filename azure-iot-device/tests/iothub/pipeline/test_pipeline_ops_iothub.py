@@ -4,9 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 import sys
+import logging
 from azure.iot.device.iothub.pipeline import pipeline_ops_iothub
 from tests.common.pipeline import pipeline_data_object_test
 
+logging.basicConfig(level=logging.INFO)
 this_module = sys.modules[__name__]
 
 pipeline_data_object_test.add_operation_test(
@@ -22,13 +24,15 @@ pipeline_data_object_test.add_operation_test(
     keyword_arguments={"callback": None},
 )
 pipeline_data_object_test.add_operation_test(
-    cls=pipeline_ops_iothub.SetAuthProviderArgsOperation,
+    cls=pipeline_ops_iothub.SetIoTHubConnectionArgsOperation,
     module=this_module,
     positional_arguments=["device_id", "hostname"],
     keyword_arguments={
         "module_id": None,
         "gateway_hostname": None,
         "ca_cert": None,
+        "client_cert": None,
+        "sas_token": None,
         "callback": None,
     },
 )

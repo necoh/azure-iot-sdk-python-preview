@@ -8,6 +8,7 @@ import pytest
 import requests
 import json
 import base64
+import logging
 import six.moves.urllib as urllib
 from azure.iot.device.iothub.auth.iotedge_authentication_provider import (
     IoTEdgeAuthenticationProvider,
@@ -15,6 +16,9 @@ from azure.iot.device.iothub.auth.iotedge_authentication_provider import (
     IoTEdgeError,
 )
 from .shared_auth_tests import SharedBaseRenewableAuthenticationProviderInstantiationTests
+from azure.iot.device import constant
+
+logging.basicConfig(level=logging.INFO)
 
 
 @pytest.fixture
@@ -188,11 +192,14 @@ class TestIoTEdgeHsmGetTrustBundle(object):
         mock_request_get = mocker.patch.object(requests, "get")
         expected_url = hsm.workload_uri + "trust-bundle"
         expected_params = {"api-version": hsm.api_version}
+        expected_headers = {"User-Agent": urllib.parse.quote_plus(constant.USER_AGENT)}
 
         hsm.get_trust_bundle()
 
         assert mock_request_get.call_count == 1
-        assert mock_request_get.call_args == mocker.call(expected_url, params=expected_params)
+        assert mock_request_get.call_args == mocker.call(
+            expected_url, params=expected_params, headers=expected_headers
+        )
 
     @pytest.mark.it("Returns the certificate from the trust bundle received from EdgeHub")
     def test_returns_received_trust_bundle(self, mocker, hsm, certificate):
@@ -247,13 +254,14 @@ class TestIoTEdgeHsmSign(object):
             module_generation_id=hsm.module_generation_id,
         )
         expected_params = {"api-version": hsm.api_version}
+        expected_headers = {"User-Agent": urllib.parse.quote_plus(constant.USER_AGENT)}
         expected_json = json.dumps({"keyId": "primary", "algo": "HMACSHA256", "data": data_str_b64})
 
         hsm.sign(data_str)
 
         assert mock_request_post.call_count == 1
         assert mock_request_post.call_args == mocker.call(
-            url=expected_url, params=expected_params, data=expected_json
+            url=expected_url, params=expected_params, headers=expected_headers, data=expected_json
         )
 
     @pytest.mark.it("Base64 encodes the string data in the request")
