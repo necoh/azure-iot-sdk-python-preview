@@ -126,7 +126,9 @@ class MQTTTransport(object):
             if rc:
                 if self.on_mqtt_connection_failure_handler:
                     try:
-                        self.on_mqtt_connection_failure_handler(_create_error_from_conack_rc_code(rc))
+                        self.on_mqtt_connection_failure_handler(
+                            _create_error_from_conack_rc_code(rc)
+                        )
                     except Exception:
                         logger.error("Unexpected error calling on_mqtt_connection_failure_handler")
                         logger.error(traceback.format_exc())

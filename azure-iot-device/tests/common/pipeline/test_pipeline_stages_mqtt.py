@@ -150,7 +150,8 @@ class TestMQTTProviderRunOpWithSetConnectionArgs(object):
             == stage._on_mqtt_connection_failure
         )
         assert (
-            transport.return_value.on_mqtt_message_received_handler == stage._on_mqtt_message_received
+            transport.return_value.on_mqtt_message_received_handler
+            == stage._on_mqtt_message_received
         )
 
     @pytest.mark.it("Sets the transport attribute on the root of the pipeline")

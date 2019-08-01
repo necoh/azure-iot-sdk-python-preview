@@ -69,7 +69,11 @@ conack_return_codes = [
 # mapping of Paho rc codes to Error object classes
 operation_return_codes = [
     {"name": "MQTT_ERR_NOMEM", "rc": mqtt.MQTT_ERR_NOMEM, "error": errors.ProtocolClientError},
-    {"name": "MQTT_ERR_PROTOCOL", "rc": mqtt.MQTT_ERR_PROTOCOL, "error": errors.ProtocolClientError},
+    {
+        "name": "MQTT_ERR_PROTOCOL",
+        "rc": mqtt.MQTT_ERR_PROTOCOL,
+        "error": errors.ProtocolClientError,
+    },
     {"name": "MQTT_ERR_INVAL", "rc": mqtt.MQTT_ERR_INVAL, "error": errors.ArgumentError},
     {
         "name": "MQTT_ERR_NO_CONN",
@@ -110,7 +114,11 @@ operation_return_codes = [
     },
     {"name": "MQTT_ERR_UNKNOWN", "rc": mqtt.MQTT_ERR_UNKNOWN, "error": errors.ProtocolClientError},
     {"name": "MQTT_ERR_ERRNO", "rc": mqtt.MQTT_ERR_ERRNO, "error": errors.ProtocolClientError},
-    {"name": "MQTT_ERR_QUEUE_SIZE", "rc": mqtt.MQTT_ERR_QUEUE_SIZE, "error": errors.ProtocolClientError},
+    {
+        "name": "MQTT_ERR_QUEUE_SIZE",
+        "rc": mqtt.MQTT_ERR_QUEUE_SIZE,
+        "error": errors.ProtocolClientError,
+    },
 ]
 
 
@@ -369,7 +377,9 @@ class TestReconnect(object):
 
 @pytest.mark.describe("MQTTTransport - EVENT: Connect Completed")
 class TestEventConnectComplete(object):
-    @pytest.mark.it("Triggers on_mqtt_connected_handler event handler upon successful connect completion")
+    @pytest.mark.it(
+        "Triggers on_mqtt_connected_handler event handler upon successful connect completion"
+    )
     def test_calls_event_handler_callback(self, mocker, mock_mqtt_client, transport):
         callback = mocker.MagicMock()
         transport.on_mqtt_connected_handler = callback
@@ -525,7 +535,9 @@ class TestDisconnect(object):
 
 @pytest.mark.describe("MQTTTransport - EVENT: Disconnect Completed")
 class TestEventDisconnectCompleted(object):
-    @pytest.mark.it("Triggers on_mqtt_disconnected_handler event handler upon disconnect completion")
+    @pytest.mark.it(
+        "Triggers on_mqtt_disconnected_handler event handler upon disconnect completion"
+    )
     def test_calls_event_handler_callback_externally_driven(
         self, mocker, mock_mqtt_client, transport
     ):
@@ -1365,7 +1377,9 @@ class TestMessageReceived(object):
         message.qos = fake_qos
         return message
 
-    @pytest.mark.it("Triggers on_mqtt_message_received_handler event handler upon receiving message")
+    @pytest.mark.it(
+        "Triggers on_mqtt_message_received_handler event handler upon receiving message"
+    )
     def test_calls_event_handler_callback(self, mocker, mock_mqtt_client, transport, message):
         callback = mocker.MagicMock()
         transport.on_mqtt_message_received_handler = callback
