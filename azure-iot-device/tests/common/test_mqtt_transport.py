@@ -41,12 +41,12 @@ conack_return_codes = [
     {
         "name": "CONNACK_REFUSED_PROTOCOL_VERSION",
         "rc": mqtt.CONNACK_REFUSED_PROTOCOL_VERSION,
-        "error": errors.TransportError,
+        "error": errors.ProtocolClientError,
     },
     {
         "name": "CONNACK_REFUSED_IDENTIFIER_REJECTED",
         "rc": mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED,
-        "error": errors.TransportError,
+        "error": errors.ProtocolClientError,
     },
     {
         "name": "CONNACK_REFUSED_SERVER_UNAVAILABLE",
@@ -68,8 +68,8 @@ conack_return_codes = [
 
 # mapping of Paho rc codes to Error object classes
 operation_return_codes = [
-    {"name": "MQTT_ERR_NOMEM", "rc": mqtt.MQTT_ERR_NOMEM, "error": errors.TransportError},
-    {"name": "MQTT_ERR_PROTOCOL", "rc": mqtt.MQTT_ERR_PROTOCOL, "error": errors.TransportError},
+    {"name": "MQTT_ERR_NOMEM", "rc": mqtt.MQTT_ERR_NOMEM, "error": errors.ProtocolClientError},
+    {"name": "MQTT_ERR_PROTOCOL", "rc": mqtt.MQTT_ERR_PROTOCOL, "error": errors.ProtocolClientError},
     {"name": "MQTT_ERR_INVAL", "rc": mqtt.MQTT_ERR_INVAL, "error": errors.ArgumentError},
     {
         "name": "MQTT_ERR_NO_CONN",
@@ -95,12 +95,12 @@ operation_return_codes = [
     {
         "name": "MQTT_ERR_PAYLOAD_SIZE",
         "rc": mqtt.MQTT_ERR_PAYLOAD_SIZE,
-        "error": errors.TransportError,
+        "error": errors.ProtocolClientError,
     },
     {
         "name": "MQTT_ERR_NOT_SUPPORTED",
         "rc": mqtt.MQTT_ERR_NOT_SUPPORTED,
-        "error": errors.TransportError,
+        "error": errors.ProtocolClientError,
     },
     {"name": "MQTT_ERR_AUTH", "rc": mqtt.MQTT_ERR_AUTH, "error": errors.UnauthorizedError},
     {
@@ -108,9 +108,9 @@ operation_return_codes = [
         "rc": mqtt.MQTT_ERR_ACL_DENIED,
         "error": errors.UnauthorizedError,
     },
-    {"name": "MQTT_ERR_UNKNOWN", "rc": mqtt.MQTT_ERR_UNKNOWN, "error": errors.TransportError},
-    {"name": "MQTT_ERR_ERRNO", "rc": mqtt.MQTT_ERR_ERRNO, "error": errors.TransportError},
-    {"name": "MQTT_ERR_QUEUE_SIZE", "rc": mqtt.MQTT_ERR_QUEUE_SIZE, "error": errors.TransportError},
+    {"name": "MQTT_ERR_UNKNOWN", "rc": mqtt.MQTT_ERR_UNKNOWN, "error": errors.ProtocolClientError},
+    {"name": "MQTT_ERR_ERRNO", "rc": mqtt.MQTT_ERR_ERRNO, "error": errors.ProtocolClientError},
+    {"name": "MQTT_ERR_QUEUE_SIZE", "rc": mqtt.MQTT_ERR_QUEUE_SIZE, "error": errors.ProtocolClientError},
 ]
 
 

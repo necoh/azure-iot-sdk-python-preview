@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 # mapping of Paho conack rc codes to Error object classes
 paho_conack_rc_to_error = {
-    mqtt.CONNACK_REFUSED_PROTOCOL_VERSION: errors.TransportError,
-    mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED: errors.TransportError,
+    mqtt.CONNACK_REFUSED_PROTOCOL_VERSION: errors.ProtocolClientError,
+    mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED: errors.ProtocolClientError,
     mqtt.CONNACK_REFUSED_SERVER_UNAVAILABLE: errors.ConnectionFailedError,
     mqtt.CONNACK_REFUSED_BAD_USERNAME_PASSWORD: errors.UnauthorizedError,
     mqtt.CONNACK_REFUSED_NOT_AUTHORIZED: errors.UnauthorizedError,
@@ -24,21 +24,21 @@ paho_conack_rc_to_error = {
 
 # mapping of Paho rc codes to Error object classes
 paho_rc_to_error = {
-    mqtt.MQTT_ERR_NOMEM: errors.TransportError,
-    mqtt.MQTT_ERR_PROTOCOL: errors.TransportError,
+    mqtt.MQTT_ERR_NOMEM: errors.ProtocolClientError,
+    mqtt.MQTT_ERR_PROTOCOL: errors.ProtocolClientError,
     mqtt.MQTT_ERR_INVAL: errors.ArgumentError,
     mqtt.MQTT_ERR_NO_CONN: errors.ConnectionDroppedError,
     mqtt.MQTT_ERR_CONN_REFUSED: errors.ConnectionFailedError,
     mqtt.MQTT_ERR_NOT_FOUND: errors.ConnectionFailedError,
     mqtt.MQTT_ERR_CONN_LOST: errors.ConnectionDroppedError,
     mqtt.MQTT_ERR_TLS: errors.UnauthorizedError,
-    mqtt.MQTT_ERR_PAYLOAD_SIZE: errors.TransportError,
-    mqtt.MQTT_ERR_NOT_SUPPORTED: errors.TransportError,
+    mqtt.MQTT_ERR_PAYLOAD_SIZE: errors.ProtocolClientError,
+    mqtt.MQTT_ERR_NOT_SUPPORTED: errors.ProtocolClientError,
     mqtt.MQTT_ERR_AUTH: errors.UnauthorizedError,
     mqtt.MQTT_ERR_ACL_DENIED: errors.UnauthorizedError,
-    mqtt.MQTT_ERR_UNKNOWN: errors.TransportError,
-    mqtt.MQTT_ERR_ERRNO: errors.TransportError,
-    mqtt.MQTT_ERR_QUEUE_SIZE: errors.TransportError,
+    mqtt.MQTT_ERR_UNKNOWN: errors.ProtocolClientError,
+    mqtt.MQTT_ERR_ERRNO: errors.ProtocolClientError,
+    mqtt.MQTT_ERR_QUEUE_SIZE: errors.ProtocolClientError,
 }
 
 
@@ -50,7 +50,7 @@ def _create_error_from_conack_rc_code(rc):
     if rc in paho_conack_rc_to_error:
         return paho_conack_rc_to_error[rc](message)
     else:
-        return errors.TransportError("Unknown CONACK rc={}".format(rc))
+        return errors.ProtocolClientError("Unknown CONACK rc={}".format(rc))
 
 
 def _create_error_from_rc_code(rc):
@@ -61,7 +61,7 @@ def _create_error_from_rc_code(rc):
     if rc in paho_rc_to_error:
         return paho_rc_to_error[rc](message)
     else:
-        return errors.TransportError("Unknown CONACK rc={}".format(rc))
+        return errors.ProtocolClientError("Unknown CONACK rc={}".format(rc))
 
 
 class MQTTTransport(object):

@@ -143,7 +143,7 @@ class FailedStatusCodeError(Exception):
     pass
 
 
-class TransportError(Exception):
+class ProtocolClientError(Exception):
     """
     Error returned from protocol client library
     """
