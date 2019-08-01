@@ -69,10 +69,10 @@ class MQTTTransportStage(PipelineStage):
                 ca_cert=self.ca_cert,
                 x509_cert=self.client_cert,
             )
-            self.transport.on_mqtt_connected = self._handle_mqtt_connected
-            self.transport.on_mqtt_connection_failure = self._handle_mqtt_connection_failure
-            self.transport.on_mqtt_disconnected = self._handle_mqtt_disconnected
-            self.transport.on_mqtt_message_received = self._handle_mqtt_message_received
+            self.transport.on_mqtt_connected_handler = self._on_mqtt_connected
+            self.transport.on_mqtt_connection_failure_handler = self._on_mqtt_connection_failure
+            self.transport.on_mqtt_disconnected_handler = self._on_mqtt_disconnected
+            self.transport.on_mqtt_message_received_handler = self._on_mqtt_message_received
             self._active_connect_op = None
             self._active_disconnect_op = None
             self.pipeline_root.transport = self.transport
@@ -146,7 +146,7 @@ class MQTTTransportStage(PipelineStage):
             operation_flow.pass_op_to_next_stage(self, op)
 
     @pipeline_thread.invoke_on_pipeline_thread_nowait
-    def _handle_mqtt_message_received(self, topic, payload):
+    def _on_mqtt_message_received(self, topic, payload):
         """
         Handler that gets called by the protocol library when an incoming message arrives.
         Convert that message into a pipeline event and pass it up for someone to handle.
@@ -157,11 +157,11 @@ class MQTTTransportStage(PipelineStage):
         )
 
     @pipeline_thread.invoke_on_pipeline_thread_nowait
-    def _handle_mqtt_connected(self):
+    def _on_mqtt_connected(self):
         """
         Handler that gets called by the transport when it connects.
         """
-        logger.info("_handle_mqtt_connected called")
+        logger.info("_on_mqtt_connected called")
         # self.on_connected() tells other pipeilne stages that we're connected.  Do this before
         # we do anything else (in case upper stages have any "are we connected" logic.
         self.on_connected()
@@ -174,12 +174,12 @@ class MQTTTransportStage(PipelineStage):
             logger.warning("Connection was unexpected")
 
     @pipeline_thread.invoke_on_pipeline_thread_nowait
-    def _handle_mqtt_connection_failure(self, cause):
+    def _on_mqtt_connection_failure(self, cause):
         """
         Handler that gets called by the transport when a connection fails.
         """
 
-        logger.error("{}: _handle_mqtt_connection_failure called: {}".format(self.name, cause))
+        logger.error("{}: _on_mqtt_connection_failure called: {}".format(self.name, cause))
         if self._active_connect_op:
             logger.info("{}: failing connect op".format(self.name))
             op = self._active_connect_op
@@ -191,11 +191,11 @@ class MQTTTransportStage(PipelineStage):
             unhandled_exceptions.exception_caught_in_background_thread(cause)
 
     @pipeline_thread.invoke_on_pipeline_thread_nowait
-    def _handle_mqtt_disconnected(self, cause):
+    def _on_mqtt_disconnected(self, cause):
         """
         Handler that gets called by the transport when the transport disconnects.
         """
-        logger.error("{}: _handle_mqtt_disconnect called: {}".format(self.name, cause))
+        logger.error("{}: _on_mqtt_disconnect called: {}".format(self.name, cause))
 
         # self.on_disconnected() tells other pipeilne stages that we're disconnected.  Do this before
         # we do anything else (in case upper stages have any "are we connected" logic.
