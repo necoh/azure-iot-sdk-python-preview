@@ -12,7 +12,9 @@ def create_custom_config():
     # Best options is to have the location of openssl config file in an env variable
     # The openssl config file extension could be "cfg" or "cnf"
 
-    config_path = os.getenv("OPENSSLCONFIG")
+    config_path = os.getenv("OPENSSL_CONF")
+    print(config_path)
+    # config_path = str(config_path)
     with open(config_path, "r") as openssl_config:
         config = openssl_config.read()
     lines = config.splitlines()
@@ -86,7 +88,9 @@ def create_directories():
     os.mkdir("demoCA/newcerts")
 
 
-def create_certificate_chain(common_name, ca_password, intermediate_password, device_password):
+def create_certificate_chain(
+    common_name, ca_password, intermediate_password, device_password, device_count
+):
     os.system(
         "openssl genrsa -aes256 -out demoCA/private/ca_key.pem -passout pass:"
         + ca_password
@@ -132,24 +136,46 @@ def create_certificate_chain(common_name, ca_password, intermediate_password, de
     )
     print("Done generating intermediate certificate")
 
+    for index in range(0, device_count):
+        index = index + 1
+        print("creating device certificate for " + str(index))
+        create_leaf_certificates(index, device_password)
+
+
+def create_leaf_certificates(index, device_password):
+
+    key_file_name = "device_key" + str(index) + ".pem"
+    csr_file_name = "device_csr" + str(index) + ".pem"
+    cert_file_name = "device_cert" + str(index) + ".pem"
+
     os.system(
-        "openssl genrsa -aes256 -out demoCA/private/device_key.pem -passout pass:"
+        "openssl genrsa -aes256 -out demoCA/private/"
+        + key_file_name
+        + " -passout pass:"
         + device_password
         + " "
         + str(key_size)
     )
     print("Done generating device key")
-    subject = "//C=US/CN=device" + common_name
+    subject = "//C=US/CN=device" + common_name + str(index)
     os.system(
-        "openssl req -config demoCA/openssl.cnf -new -sha256 -key demoCA/private/device_key.pem -passin pass:"
+        "openssl req -config demoCA/openssl.cnf -new -sha256 -key demoCA/private/"
+        + key_file_name
+        + " -passin pass:"
         + device_password
         + " "
-        + "-out demoCA/newcerts/device_csr.pem -subj "
+        + "-out demoCA/newcerts/"
+        + csr_file_name
+        + " -subj "
         + subject
     )
     print("Done generating device CSR")
     os.system(
-        "openssl ca -config demoCA/openssl.cnf -in demoCA/newcerts/device_csr.pem -out demoCA/newcerts/device_cert.pem -keyfile demoCA/private/intermediate_key.pem -cert demoCA/newcerts/intermediate_cert.pem -passin pass:"
+        "openssl ca -config demoCA/openssl.cnf -in demoCA/newcerts/"
+        + csr_file_name
+        + " -out demoCA/newcerts/"
+        + cert_file_name
+        + " -keyfile demoCA/private/intermediate_key.pem -cert demoCA/newcerts/intermediate_cert.pem -passin pass:"
         + intermediate_password
         + " "
         + "-extensions usr_cert -days 3 -notext -md sha256 -batch"
@@ -182,6 +208,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device-password", type=str, help="device key password. If omitted it will be prompted."
     )
+
+    parser.add_argument(
+        "--device-count", type=str, help="Number of devices that present in a group. Default is 1."
+    )
+
     parser.add_argument(
         "--mode",
         type=str,
@@ -236,6 +267,11 @@ if __name__ == "__main__":
             device_password = args.device_password
         else:
             device_password = getpass.getpass("Enter pass phrase for device key: ")
+        if args.device_count:
+            device_count = args.device_count
+        else:
+            device_count = 1
+
     else:
         if args.nonce:
             nonce = args.nonce
@@ -251,4 +287,5 @@ if __name__ == "__main__":
             ca_password=ca_password,
             intermediate_password=intermediate_password,
             device_password=device_password,
+            device_count=int(device_count),
         )
