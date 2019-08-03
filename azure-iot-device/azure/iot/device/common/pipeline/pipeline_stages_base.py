@@ -13,7 +13,7 @@ from . import pipeline_events_base
 from . import pipeline_ops_base
 from . import operation_flow
 from . import pipeline_thread
-from azure.iot.device.common import unhandled_exceptions
+from azure.iot.device.common import unhandled_exceptions, errors
 
 logger = logging.getLogger(__name__)
 
@@ -222,152 +222,60 @@ class PipelineRootStage(PipelineStage):
             logger.warning("incoming pipeline event with no handler.  dropping.")
 
 
-class EnsureConnectionStage(PipelineStage):
-    # TODO: additional documentation and tests for this class are not being implemented because a significant rewriting to support more scenarios is pending
-    """
-    This stage is responsible for ensuring that the protocol is connected when
-    it needs to be connected, and it's responsible for queueing operations
-    while we're waiting for the connect operation to complete.
-
-    Note: this stage will likely be replaced by a more full-featured stage to handle
-    other "block while we're setting something up" operations, such as subscribing to
-    twin responses.  That is another example where we want to ensure some state and block
-    requests until that state is achieved.
-    """
-
+class ConnectionManagementStage(PipelineStage):
     def __init__(self):
-        super(EnsureConnectionStage, self).__init__()
+        super(ConnectionManagementStage, self).__init__()
         self.connected = False
-        self.queue = queue.Queue()
-        self.blocked = False
 
     @pipeline_thread.runs_on_pipeline_thread
     def _run_op(self, op):
-        # If this stage is currently blocked (because we're waiting for a connection
-        # to complete, we queue up all operations until after the connect completes.
-        if self.blocked:
+        if isinstance(op, pipeline_ops_base.ConnectOperation):
+            self._connect(op)
+
+        elif isinstance(op, pipeline_ops_base.DisconnectOperation):
+            self._disconnect(op)
+
+        elif isinstance(op, pipeline_ops_base.ReconnectOperation):
+            self._reconnect(op)
+
+        elif op.needs_connection:
+            self._ensure_connection(op)
+
+        else:
+            operation_flow.pass_op_to_next_stage(stage=self, op=op)
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _connect(self, op):
+        if self.connected:
             logger.info(
-                "{}({}): pipeline is blocked waiting for connect.  queueing.".format(
+                "{}({}): protocol client is already conencted.  completing early.".format(
                     self.name, op.name
                 )
             )
-            self.queue.put_nowait(op)
-
-        # If we get a request to connect, we either complete immediately (if we're already
-        # connected) or we do the connect operation, which is pulled out into a helper
-        # function because starting the connection also means blocking this stage until
-        # the connect is complete.
-        elif isinstance(op, pipeline_ops_base.ConnectOperation):
-            if self.connected:
-                logger.info(
-                    "{}({}): protocol client is already conencted.  completing early.".format(
-                        self.name, op.name
-                    )
-                )
-                operation_flow.complete_op(self, op)
-            else:
-                self._do_connect(op)
-
-        # If we get a request to disconnect, we either complete the request immediately
-        # (if we're already disconencted) or we pass the disconnect request down.
-        elif isinstance(op, pipeline_ops_base.DisconnectOperation):
-            if not self.connected:
-                logger.info(
-                    "{}({}): procotol client is already disconencted.  completing early.".format(
-                        self.name, op.name
-                    )
-                )
-                operation_flow.complete_op(self, op)
-            else:
-                operation_flow.pass_op_to_next_stage(self, op)
-
-        # Any other operation that requires a connection can trigger a connection if
-        # we're not connected.
-        elif op.needs_connection and not self.connected:
-            self._do_connect(op)
-
-        # Finally, if this stage doesn't need to do anything else with this operation,
-        # it just passes it down.
+            operation_flow.complete_op(self, op)
         else:
-            operation_flow.pass_op_to_next_stage(self, op)
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def _block(self, op):
-        """
-        block this stage while we're waiting for the connection to complete.
-        """
-        logger.info("{}({}): enabling block".format(self.name, op.name))
-        self.blocked = True
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def _unblock(self, op, error):
-        """
-        Unblock this stage after the connection is complete.  This also means
-        releasing all the queued up operations that we were waiting for the
-        connect operation to complete.
-        """
-        logger.info("{}({}): disabling block and releasing queued ops.".format(self.name, op.name))
-        self.blocked = False
-        logger.info(
-            "{}({}): processing {} items in queue".format(self.name, op.name, self.queue.qsize())
-        )
-        # loop through our queue and release all the blocked operations
-        while not self.queue.empty():
-            op_to_release = self.queue.get_nowait()
-            if error:
-                # if we're unblocking the queue because something (like a connect operation) failed,
-                # then we fail all of the blocked operations with the same error.
-                logger.info(
-                    "{}({}): failing {} op because of error".format(
-                        self.name, op.name, op_to_release.name
-                    )
-                )
-                op_to_release.error = error
-                operation_flow.complete_op(self, op_to_release)
-            else:
-                # when we release, go back through this stage again to make sure requirements are _really_ satisfied.
-                # this also pre-maturely completes ops that might now be satisfied.
-                logger.info(
-                    "{}({}): releasing {} op.".format(self.name, op.name, op_to_release.name)
-                )
-                self.run_op(op_to_release)
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def _do_connect(self, op):
-        """
-        Start connecting the protocol client in response to some operation (which may or may not be a Connect operation)
-        """
-        # first, we block all future operations queue while we're connecting
-        logger.info("{}({}): blocking while we connect".format(self.name, op.name))
-        self._block(op=op)
-
-        # If we're connecting as a side-effect of some other operation (that is not Connect), then we queue
-        # that operation to run after the connection is complete.
-        if not isinstance(op, pipeline_ops_base.ConnectOperation):
-            logger.info("{}({}): queueing until connection complete".format(self.name, op.name))
-            self.queue.put_nowait(op)
-
-        # function that gets called after we're connected.
-        @pipeline_thread.runs_on_pipeline_thread
-        def on_connected(op_connect):
-            logger.info(
-                "{}({}): connection is complete: {}".format(self.name, op.name, op_connect.error)
+            block_op = pipeline_ops_base.BlockAllNewOpsOperation().then(
+                operation_flow.callback_pass_op_to_next_stage_or_fail(self, op)
             )
-            # if we're connecting because some layer above us asked us to connect, we complete that operation
-            # once the connection is established.
-            if isinstance(op, pipeline_ops_base.ConnectOperation):
-                op.error = op_connect.error
-                operation_flow.complete_op(self, op)
-            # and, no matter what, we always unblock the stage when we're done connecting.
-            self._unblock(op=op, error=op_connect.error)
+            operation_flow.pass_op_to_next_stage(block_op)
 
-        # call down to the next stage to connect.  We don't use delegate_to_different_op because we have
-        # extra code that needs to run (unblocking the queue) when the connect is complete and
-        # delegate_to_different_op can't do that.
-        logger.info("{}({}): calling down with Connect operation".format(self.name, op.name))
-        operation_flow.pass_op_to_next_stage(
-            self, pipeline_ops_base.ConnectOperation(callback=on_connected)
-        )
+    @pipeline_thread.runs_on_pipeline_thread
+    def _reconnect(self, op):
+        pass
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _disconnect(self, op):
+        if not self.connected:
+            logger.info(
+                "{}({}): procotol client is already disconencted.  completing early.".format(
+                    self.name, op.name
+                )
+            )
+            operation_flow.complete_op(self, op)
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _ensure_connection(self, op):
+        pass
 
     @pipeline_thread.runs_on_pipeline_thread
     def on_connected(self):
@@ -481,3 +389,116 @@ class CoordinateRequestAndResponseStage(PipelineStage):
                 )
         else:
             operation_flow.pass_event_to_previous_stage(self, event)
+
+
+class FlowControlStage(PipelineStage):
+    def __init__(self):
+        super(FlowControlStage, self).__init__()
+        self.waiting_ops = queue.Queue()
+        self.outstanding_ops = list()
+        self.state = "unblocked"
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _run_op(self, op):
+        if isinstance(op, pipeline_ops_base.BlockAllNewOpsOperation):
+            self._block_new_ops(op)
+
+        elif isinstance(op, pipeline_ops_base.UnblockNewOpsOperation):
+            self._unblock_new_ops(op)
+
+        elif self.state in ["blocked", "blocking"]:
+            self._queue_op(op)
+
+        else:
+            self._record_op_and_pass_it_to_next_stage(op)
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _block_new_ops(self, op):
+        if self.state in ["blocked", "blocking"]:
+            """
+            This error happens if the pipeline is blocked an another operation tries to block the same pipeline.
+            This is caused by the flow of operations.  There must be a stage at a higher level that blocked this
+            pipeline and now someone is attempting to block it again.  The resolution is to look at who blocked
+            the pipeline first and who's trying to block it now.  If both blocks are valid, then maybe this code
+            needs to be updated to support multiple blocks.  If both blocks are not valid, then the cause of the
+            double-blocking needs to be resolved.
+            """
+            raise errors.PipelineError("Attempting to block an already-blocked pipeline")
+        if self.outstanding_ops_empty_handler:
+            """
+            This error happens because there is an unblocked pipeline that still has an outstanding_ops_handler.
+            If this happens, then there is something wrong with this stages which implies that a previous
+            call to _block_new_ops didn't actually complete but there is no block (because self.state == "unblocked").
+            """
+            raise errors.PipelineError(
+                "Attempting to block a pipeline that already has an outstanding_ops_handler"
+            )
+
+        logger.info("{}({}): enabling block".format(self.name, op.name))
+        self.state = "blocking"
+
+        def on_outstanding_ops_empty():
+            logger.info(
+                "{}({}): outstanding op list is empty.  completing".format(self.name, op.name)
+            )
+            self.state == "blocked"
+            operation_flow.complete_op(self, op)
+
+        if len(self.outstandling_ops):
+            self.on_outstanding_ops_empty_handler = on_outstanding_ops_empty
+        else:
+            on_outstanding_ops_empty()
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _unblock_new_ops(self, op):
+        if not self.state == "blocked":
+            raise errors.PipelineError("Attempting to unblock a pipeline that hasn't been blocked")
+
+        logger.info("{}({}): unblocking and releasing queued ops.".format(self.name, op.name))
+        self.state = "unblocked"
+        logger.info(
+            "{}({}): processing {} items in queue".format(self.name, op.name, self.queue.qsize())
+        )
+
+        # loop through our queue and release all the blocked operations
+        while not self.queue.empty():
+            op_to_release = self.queue.get_nowait()
+            if op.error:
+                # if we're unblocking the queue because something (like a connect operation) failed,
+                # then we fail all of the blocked operations with the same error.
+                logger.info(
+                    "{}({}): failing {} op because of error".format(
+                        self.name, op.name, op_to_release.name
+                    )
+                )
+                op_to_release.error = op.error
+                operation_flow.complete_op(self, op_to_release)
+            else:
+                logger.info(
+                    "{}({}): releasing {} op.".format(self.name, op.name, op_to_release.name)
+                )
+                operation_flow.pass_op_to_next_stage(self, op_to_release)
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def _record_op_and_pass_it_to_next_stage(self, op):
+
+        # make a new callback that removes this op from the outstanding op list when it's done
+        original_callback = op.callback
+
+        def new_callback(op):
+            op.callback = original_callback
+            if op not in self.outstanding_ops:
+                raise errors.PipelineError("Outstanding op not in outstanding op list")
+            self.outstanding_ops.remove(op)
+            operation_flow.complete_op(op)
+
+            if len(self.outstanding_ops) and self.outstandling_ops_empty_handler:
+                handler = self.outstanding_ops_empty_handler
+                self.outstanding_ops_empty_handler = None
+                handler()
+
+        op.callback = new_callback
+
+        # add it to the outstanding op list and and continue
+        self.outstanding_ops.append(op)
+        operation_flow.pass_op_next_stage(self, op)

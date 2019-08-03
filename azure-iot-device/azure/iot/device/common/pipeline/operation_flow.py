@@ -228,6 +228,25 @@ def pass_op_to_next_stage(stage, op):
         logger.info("{}({}): passing to next stage.".format(stage.name, op.name))
         stage.next.run_op(op)
 
+@pipeline_thrad.runs_on_pipeline_thread
+def pass_op_to_next_stage_or_fail(stage, op, error):
+    if error:
+        op.error = error
+        logger.error("{}({}): completing op with error {}".format(stage.name, op.name, error))
+        complete_op(stage, op)
+    else:
+        pass_op_to_next_stage(stage, op)
+
+def callback_pass_op_to_next_stage_or_fail(stage, op):
+    def callback(completed_op):
+        if completed_op.error:
+            logger.info("{}({}): worker op {} had error {}, so failing with same error".format(stage.name, op.name, completed_op.name, completed_op.error))
+            op.error = completed_op.error
+            complete_op(stage, op)
+        else:
+            logger.info("{}({}): worker op {} succeeded. passing to next stage ".format(stage.name, op.name, completed_op.name))
+            pass_op_to_next_stage(stage, op)
+
 
 @pipeline_thread.runs_on_pipeline_thread
 def complete_op(stage, op):

@@ -47,6 +47,10 @@ class PipelineOperation(object):
         self.needs_connection = False
         self.error = None
 
+    def then(self, callback):
+        self.callback = callback
+        return self
+
 
 class ConnectOperation(PipelineOperation):
     """
@@ -226,3 +230,17 @@ class SendIotRequestOperation(PipelineOperation):
         self.request_body = request_body
         self.request_id = request_id
         self.needs_connection = True
+
+
+class BlockAllNewOpsOperation(PipelineOperation):
+    """
+    By default, queue new ops and wait for all pending ops to complete
+    TODO: add new flags for this in the future to support retry
+    """
+    pass
+
+class UnblockAllNewOpsOperation(PipelineOperation):
+    def __init__(self, error):
+        super(UnblockAllNewOpsOperation, self).__init__()
+        self.error=error
+
