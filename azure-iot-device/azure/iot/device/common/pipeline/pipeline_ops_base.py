@@ -47,10 +47,6 @@ class PipelineOperation(object):
         self.needs_connection = False
         self.error = None
 
-    def then(self, callback):
-        self.callback = callback
-        return self
-
 
 class ConnectOperation(PipelineOperation):
     """
