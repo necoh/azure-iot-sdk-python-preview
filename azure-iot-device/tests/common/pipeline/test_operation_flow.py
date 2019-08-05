@@ -37,7 +37,7 @@ def apply_fake_pipeline_thread(fake_pipeline_thread):
 
 
 class MockPipelineStage(pipeline_stages_base.PipelineStage):
-    def _run_op(self, op):
+    def _execute_op(self, op):
         pass_op_to_next_stage(self, op)
 
 
