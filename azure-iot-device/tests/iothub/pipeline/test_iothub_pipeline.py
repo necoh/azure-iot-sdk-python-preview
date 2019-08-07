@@ -96,8 +96,9 @@ class TestIoTHubPipelineInstantiation(object):
             pipeline_stages_iothub.UseAuthProviderStage,
             pipeline_stages_iothub.HandleTwinOperationsStage,
             pipeline_stages_base.CoordinateRequestAndResponseStage,
-            pipeline_stages_base.EnsureConnectionStage,
             pipeline_stages_iothub_mqtt.IoTHubMQTTConverterStage,
+            pipeline_stages_base.EnsureConnectionStage,
+            pipeline_stages_base.SerializeConnectOpsStage,
             pipeline_stages_mqtt.MQTTTransportStage,
         ]
 
