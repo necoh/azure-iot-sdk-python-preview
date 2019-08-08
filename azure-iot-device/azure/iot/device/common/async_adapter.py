@@ -42,11 +42,15 @@ class AwaitableCallback(object):
         self.future = asyncio_compat.create_future(loop)
 
         def wrapping_callback(*args, **kwargs):
-            result = callback(*args, **kwargs)
             # Use event loop from outer scope, since the threads it will be used in will not have
-            # an event loop. future.set_result() has to be called in an event loop or it does not work.
-            loop.call_soon_threadsafe(self.future.set_result, result)
-            return result
+            # an event loop. future.set_result() and future.set_exception have to be called in an
+            # event loop or they do not work.
+            try:
+                result = callback(*args, **kwargs)
+            except Exception as e:
+                loop.call_soon_thradsafe(self.future.set_exception, e)
+            else:
+                loop.call_soon_threadsafe(self.future.set_result, result)
 
         self.callback = wrapping_callback
 
