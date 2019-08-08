@@ -163,16 +163,25 @@ class PipelineRootStage(PipelineStage):
     the pipeline exist.  This is also where clients can add event handlers to receive
     events from the pipeline.
 
-    :ivar on_pipeline_event: Handler which can be set by users of the pipeline to
+    :ivar on_pipeline_event_handler: Handler which can be set by users of the pipeline to
       receive PipelineEvent objects.  This is how users receive any "unsolicited"
       events from the pipeline (such as C2D messages).  This function is called with
       a PipelineEvent object every time any such event occurs.
-    :type on_pipeline_event: Function
+    :type on_pipeline_event_handler: Function
+    :ivar on_connected_handler: Handler which can be set by users of the pipeline to
+      receive events every time the underlying transport connects
+    :type on_connected_handler: Function
+    :ivar on_disconnected_handler: Handler which can be set by users of the pipeline to
+      receive events every time the underlying transport disconnects
+    :type on_disconnected_handler: Function
     """
 
     def __init__(self):
         super(PipelineRootStage, self).__init__()
-        self.on_pipeline_event = None
+        self.on_pipeline_event_handler = None
+        self.on_connected_handler = None
+        self.on_disconnected_handler = None
+        self.connected = False
 
     def run_op(self, op):
         op.callback = pipeline_thread.invoke_on_callback_thread_nowait(op.callback)
@@ -209,17 +218,38 @@ class PipelineRootStage(PipelineStage):
     def _handle_pipeline_event(self, event):
         """
         Override of the PipelineEvent handler.  Because this is the root of the pipeline,
-        this function calls the on_pipeline_event handler to pass the event to the
+        this function calls the on_pipeline_event_handler to pass the event to the
         caller.
 
         :param PipelineEvent event: Event to be handled, i.e. returned to the caller
           through the handle_pipeline_event (if provided).
         """
-        if self.on_pipeline_event:
-            # already protected by try/except in handle_pipeline_event()
-            self.on_pipeline_event(event)
+        if self.on_pipeline_event_handler:
+            pipeline_thread.invoke_on_callback_thread_nowait(self.on_pipeline_event_handler)(event)
         else:
             logger.warning("incoming pipeline event with no handler.  dropping.")
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def on_connected(self):
+        logger.info(
+            "{}: on_connected.  on_connected_handler={}".format(
+                self.name, self.on_connected_handler
+            )
+        )
+        self.connected = True
+        if self.on_connected_handler:
+            pipeline_thread.invoke_on_callback_thread_nowait(self.on_connected_handler)()
+
+    @pipeline_thread.runs_on_pipeline_thread
+    def on_disconnected(self):
+        logger.info(
+            "{}: on_disconnected.  on_disconnected_handler={}".format(
+                self.name, self.on_disconnected_handler
+            )
+        )
+        self.connected = False
+        if self.on_disconnected_handler:
+            pipeline_thread.invoke_on_callback_thread_nowait(self.on_disconnected_handler)()
 
 
 class EnsureConnectionStage(PipelineStage):
@@ -228,15 +258,16 @@ class EnsureConnectionStage(PipelineStage):
     it needs to be connected.
     """
 
-    def __init__(self):
-        super(EnsureConnectionStage, self).__init__()
-        self.connected = False
-
     @pipeline_thread.runs_on_pipeline_thread
     def _execute_op(self, op):
         # Any operation that requires a connection can trigger a connection if
         # we're not connected.
-        if op.needs_connection and not self.connected:
+        if op.needs_connection and not self.pipeline_root.connected:
+            logger.info(
+                "{}({}): Op needs connection.  Queueing this op and starting a ConnectionOperation".format(
+                    self.name, op.name
+                )
+            )
             self._do_connect(op)
 
         # Finally, if this stage doesn't need to do anything else with this operation,
@@ -251,14 +282,11 @@ class EnsureConnectionStage(PipelineStage):
         """
         # function that gets called after we're connected.
         @pipeline_thread.runs_on_pipeline_thread
-        def on_connected(op_connect):
-            logger.info(
-                "{}({}): connection is complete: {}".format(self.name, op.name, op_connect.error)
-            )
+        def on_connect_op_complete(op_connect):
             if op_connect.error:
                 logger.info(
-                    "{}({}): completing with failure because of connection failure".format(
-                        self.name, op.name
+                    "{}({}): Connection failed.  Completing with failure because of connection failure: {}".format(
+                        self.name, op.name, op_connect.error
                     )
                 )
                 op.error = op_connect.error
@@ -272,18 +300,8 @@ class EnsureConnectionStage(PipelineStage):
         # call down to the next stage to connect.
         logger.info("{}({}): calling down with Connect operation".format(self.name, op.name))
         operation_flow.pass_op_to_next_stage(
-            self, pipeline_ops_base.ConnectOperation(callback=on_connected)
+            self, pipeline_ops_base.ConnectOperation(callback=on_connect_op_complete)
         )
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def on_connected(self):
-        self.connected = True
-        PipelineStage.on_connected(self)
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def on_disconnected(self):
-        self.connected = False
-        PipelineStage.on_disconnected(self)
 
 
 class SerializeConnectOpsStage(PipelineStage):
@@ -299,7 +317,6 @@ class SerializeConnectOpsStage(PipelineStage):
         super(SerializeConnectOpsStage, self).__init__()
         self.queue = queue.Queue()
         self.blocked = False
-        self.connected = False
 
     @pipeline_thread.runs_on_pipeline_thread
     def _execute_op(self, op):
@@ -307,13 +324,13 @@ class SerializeConnectOpsStage(PipelineStage):
         # to complete), we queue up all operations until after the connect completes.
         if self.blocked:
             logger.info(
-                "{}({}): pipeline is blocked waiting for connect/disconnect/reconnect.  queueing.".format(
+                "{}({}): pipeline is blocked waiting for a prior connect/disconnect/reconnect to complete.  queueing.".format(
                     self.name, op.name
                 )
             )
             self.queue.put_nowait(op)
 
-        elif isinstance(op, pipeline_ops_base.ConnectOperation) and self.connected:
+        elif isinstance(op, pipeline_ops_base.ConnectOperation) and self.pipeline_root.connected:
             logger.info(
                 "{}({}): Transport is already connected.  Completing early".format(
                     self.name, op.name
@@ -321,7 +338,10 @@ class SerializeConnectOpsStage(PipelineStage):
             )
             operation_flow.complete_op(stage=self, op=op)
 
-        elif isinstance(op, pipeline_ops_base.DisconnectOperation) and not self.connected:
+        elif (
+            isinstance(op, pipeline_ops_base.DisconnectOperation)
+            and not self.pipeline_root.connected
+        ):
             logger.info(
                 "{}({}): Transport is already disconnected.  Completing early".format(
                     self.name, op.name
@@ -347,7 +367,7 @@ class SerializeConnectOpsStage(PipelineStage):
                 op.callback = old_callback
                 self._unblock(op, op.error)
                 logger.info(
-                    "{}({}): unblock is comlete.  completing op that caused unblock".format(
+                    "{}({}): unblock is complete.  completing op that caused unblock".format(
                         self.name, op.name
                     )
                 )
@@ -362,18 +382,18 @@ class SerializeConnectOpsStage(PipelineStage):
     @pipeline_thread.runs_on_pipeline_thread
     def _block(self, op):
         """
-        block this stage while we're waiting for the connection to complete.
+        block this stage while we're waiting for the connect/disconnect/reconnect operation to complete.
         """
-        logger.info("{}({}): enabling block".format(self.name, op.name))
+        logger.info("{}({}): blocking".format(self.name, op.name))
         self.blocked = True
 
     @pipeline_thread.runs_on_pipeline_thread
     def _unblock(self, op, error):
         """
-        Unblock this stage after the connection is complete.  This also means
+        Unblock this stage after the connect/disconnect/reconnect operation is complete.  This also means
         releasing all the operations that were queued up.
         """
-        logger.info("{}({}): disabling block and releasing queued ops.".format(self.name, op.name))
+        logger.info("{}({}): unblocking and releasing queued ops.".format(self.name, op.name))
         self.blocked = False
         logger.info(
             "{}({}): processing {} items in queue".format(self.name, op.name, self.queue.qsize())
@@ -401,16 +421,6 @@ class SerializeConnectOpsStage(PipelineStage):
                 )
                 # call run_op directly here so operations go through this stage again (especiall connect/disconnect ops)
                 self.run_op(op_to_release)
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def on_connected(self):
-        self.connected = True
-        PipelineStage.on_connected(self)
-
-    @pipeline_thread.runs_on_pipeline_thread
-    def on_disconnected(self):
-        self.connected = False
-        PipelineStage.on_disconnected(self)
 
 
 class CoordinateRequestAndResponseStage(PipelineStage):

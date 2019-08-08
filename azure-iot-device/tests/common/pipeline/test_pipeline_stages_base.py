@@ -6,7 +6,9 @@
 import logging
 import pytest
 import sys
+import six
 import threading
+from six.moves import queue
 from azure.iot.device.common.pipeline import (
     pipeline_stages_base,
     pipeline_ops_base,
@@ -52,6 +54,12 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
     all_events=all_common_events,
     handled_events=all_common_events,
     methods_that_can_run_in_any_thread=["append_stage", "run_op"],
+    extra_initializer_defaults={
+        "on_pipeline_event_handler": None,
+        "on_connected_handler": None,
+        "on_disconnected_handler": None,
+        "connected": False,
+    },
 )
 
 
@@ -91,11 +99,65 @@ def _test_pipeline_root_runs_operation_in_pipeline_thread(
     assert mock_execute_op.call_count == 1
 
 
+@pytest.mark.it("Calls on_connected_handler in callback thread")
+def _test_pipeline_root_runs_on_connected_in_callback_thread(self, stage, mocker):
+    stage.pipeline_root = stage
+    callback_called = threading.Event()
+
+    def callback(*arg, **argv):
+        assert threading.current_thread().name == "callback"
+        callback_called.set()
+
+    stage.on_connected_handler = callback
+
+    stage.on_connected()
+    callback_called.wait()
+
+
+@pytest.mark.it("Calls on_disconnected_handler in callback thread")
+def _test_pipeline_root_runs_on_disconnected_in_callback_thread(self, stage, mocker):
+    stage.pipeline_root = stage
+    callback_called = threading.Event()
+
+    def callback(*arg, **argv):
+        assert threading.current_thread().name == "callback"
+        callback_called.set()
+
+    stage.on_disconnected_handler = callback
+
+    stage.on_disconnected()
+    callback_called.wait()
+
+
+@pytest.mark.it("Calls on_event_received_handler in callback thread")
+def _test_pipeline_root_runs_on_event_received_in_callback_thread(self, stage, mocker, event):
+    stage.pipeline_root = stage
+    callback_called = threading.Event()
+
+    def callback(*arg, **argv):
+        assert threading.current_thread().name == "callback"
+        callback_called.set()
+
+    stage.on_pipeline_event_handler = callback
+
+    stage.handle_pipeline_event(event)
+    callback_called.wait()
+
+
 TestPipelineRootStagePipelineThreading.test_runs_callback_in_callback_thread = (
     _test_pipeline_root_runs_callback_in_callback_thread
 )
 TestPipelineRootStagePipelineThreading.test_runs_operation_in_pipeline_thread = (
     _test_pipeline_root_runs_operation_in_pipeline_thread
+)
+TestPipelineRootStagePipelineThreading.test_pipeline_root_runs_on_connected_in_callback_thread = (
+    _test_pipeline_root_runs_on_connected_in_callback_thread
+)
+TestPipelineRootStagePipelineThreading.test_pipeline_root_runs_on_disconnected_in_callback_thread = (
+    _test_pipeline_root_runs_on_disconnected_in_callback_thread
+)
+TestPipelineRootStagePipelineThreading.test_pipeline_root_runs_on_event_received_in_callback_thread = (
+    _test_pipeline_root_runs_on_event_received_in_callback_thread
 )
 
 pipeline_stage_test.add_base_pipeline_stage_tests(
@@ -149,7 +211,7 @@ class TestEnsureConnectionStageRunOp(object):
 
     @pytest.mark.it("Passes the operation down the pipline when the transport is already connected")
     def test_operation_alrady_connected(self, params, op, stage):
-        stage.connected = True
+        stage.pipeline_root.connected = True
 
         stage.run_op(op)
 
@@ -160,7 +222,7 @@ class TestEnsureConnectionStageRunOp(object):
         "Sends a ConnectOperation instead of the op down the pipeline if the transport is not connected"
     )
     def test_sends_connect(self, params, op, stage):
-        stage.connected = False
+        stage.pipeline_root.connected = False
 
         stage.run_op(op)
 
@@ -171,7 +233,7 @@ class TestEnsureConnectionStageRunOp(object):
         "Calls the op's callback with the error from the ConnectOperation is that operation fails"
     )
     def test_connect_failure(self, params, op, stage, fake_exception):
-        stage.connected = False
+        stage.pipeline_root.connected = False
 
         stage.run_op(op)
         connect_op = stage.next.run_op.call_args[0][0]
@@ -182,7 +244,7 @@ class TestEnsureConnectionStageRunOp(object):
 
     @pytest.mark.it("Waits for the ConnectOperation to complete before pasing the operation down")
     def test_connect_success(self, params, op, stage):
-        stage.connected = False
+        stage.pipeline_root.connected = False
 
         stage.run_op(op)
         assert stage.next.run_op.call_count == 1
@@ -194,7 +256,7 @@ class TestEnsureConnectionStageRunOp(object):
 
     @pytest.mark.it("calls the op's callback when the operation is complete after connecting")
     def test_operation_complete(self, params, op, stage):
-        stage.connected = False
+        stage.pipeline_root.connected = False
 
         stage.run_op(op)
         connect_op = stage.next.run_op.call_args[0][0]
@@ -205,7 +267,7 @@ class TestEnsureConnectionStageRunOp(object):
 
     @pytest.mark.it("calls the op's callback when the operation fails after connecting")
     def test_operation_fails(self, params, op, stage, fake_exception):
-        stage.connected = False
+        stage.pipeline_root.connected = False
 
         stage.run_op(op)
         connect_op = stage.next.run_op.call_args[0][0]
@@ -227,6 +289,7 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
     ],
     all_events=all_common_events,
     handled_events=[],
+    extra_initializer_defaults={"blocked": False, "queue": queue.Queue},
 )
 
 connect_ops = [
@@ -271,7 +334,7 @@ class TestSerializeConnectOpStageRunOp(object):
     )
     def test_connect_while_connected(self, stage, mocker):
         op = pipeline_ops_base.ConnectOperation(callback=mocker.MagicMock())
-        stage.connected = True
+        stage.pipeline_root.connected = True
         stage.run_op(op)
         assert_callback_succeeded(op=op)
 
@@ -280,7 +343,7 @@ class TestSerializeConnectOpStageRunOp(object):
     )
     def test_disconnect_while_disconnected(self, stage, mocker):
         op = pipeline_ops_base.DisconnectOperation(callback=mocker.MagicMock())
-        stage.connected = False
+        stage.pipeline_root.connected = False
         stage.run_op(op)
         assert_callback_succeeded(op=op)
 
@@ -299,7 +362,7 @@ class TestSerializeConnectOpStageRunOp(object):
         "Does not pass the operation down if a different operation is currently being serialized"
     )
     def test_does_not_pass_op_if_blocked(self, params, stage, connect_op, fake_op):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         stage.run_op(fake_op)
 
@@ -315,7 +378,7 @@ class TestSerializeConnectOpStageRunOp(object):
     def test_waits_for_serialized_op_to_complete_before_passing_blocked_op(
         self, params, stage, connect_op, fake_op
     ):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         stage.run_op(fake_op)
         operation_flow.complete_op(stage=stage.next, op=connect_op)
@@ -330,7 +393,7 @@ class TestSerializeConnectOpStageRunOp(object):
     def test_fails_blocked_op_if_serialized_op_fails(
         self, params, stage, connect_op, fake_op, fake_exception
     ):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         stage.run_op(fake_op)
         connect_op.error = fake_exception
@@ -342,7 +405,7 @@ class TestSerializeConnectOpStageRunOp(object):
     )
     @pytest.mark.it("Can pend multiple operations while waiting for a serialized operation")
     def test_blocks_multiple_ops(self, params, stage, connect_op, fake_ops):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         for op in fake_ops:
             stage.run_op(op)
@@ -353,7 +416,7 @@ class TestSerializeConnectOpStageRunOp(object):
     )
     @pytest.mark.it("Passes down all pending operations after the serialized operation completes")
     def test_unblocks_multiple_ops(self, params, stage, connect_op, fake_ops):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         for op in fake_ops:
             stage.run_op(op)
@@ -374,7 +437,7 @@ class TestSerializeConnectOpStageRunOp(object):
     )
     @pytest.mark.it("Fails all pending operations after the seriazed operation fails")
     def test_fails_multiple_ops(self, params, stage, connect_op, fake_ops, fake_exception):
-        stage.connected = params["connected_flag_required_to_run"]
+        stage.pipeline_root.connected = params["connected_flag_required_to_run"]
         stage.run_op(connect_op)
         for op in fake_ops:
             stage.run_op(op)
@@ -455,7 +518,7 @@ class TestSerializeConnectOpStageRunOp(object):
     def test_immediately_completes_second_op(self, stage, params, mocker):
         first_connect_op = params["first_connect_op"](mocker.MagicMock())
         second_connect_op = params["second_connect_op"](mocker.MagicMock())
-        stage.connected = params["pre_connected_flag"]
+        stage.pipeline_root.connected = params["pre_connected_flag"]
 
         stage.run_op(first_connect_op)
         stage.run_op(second_connect_op)
@@ -465,7 +528,7 @@ class TestSerializeConnectOpStageRunOp(object):
         assert stage.next.run_op.call_args[0][0] == first_connect_op
 
         # complete first_connect_op
-        stage.connected = params["mid_connect_flag"]
+        stage.pipeline_root.connected = params["mid_connect_flag"]
         operation_flow.complete_op(stage=stage.next, op=first_connect_op)
 
         # second connect_op should be completed without having been passed down.
@@ -480,6 +543,7 @@ pipeline_stage_test.add_base_pipeline_stage_tests(
     handled_ops=[pipeline_ops_base.SendIotRequestAndWaitForResponseOperation],
     all_events=all_common_events,
     handled_events=[pipeline_events_base.IotResponseEvent],
+    extra_initializer_defaults={"pending_responses": dict},
 )
 
 

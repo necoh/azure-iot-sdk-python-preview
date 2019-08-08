@@ -75,7 +75,6 @@ class MQTTTransportStage(PipelineStage):
             self.transport.on_mqtt_message_received_handler = self._on_mqtt_message_received
             self._active_connect_op = None
             self._active_disconnect_op = None
-            self.pipeline_root.transport = self.transport
             operation_flow.complete_op(self, op)
 
         elif isinstance(op, pipeline_ops_base.ConnectOperation):
