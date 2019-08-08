@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import pytest
+import inspect
 
 fake_count = 0
 
@@ -129,7 +130,7 @@ def add_instantiation_test(
         def test_defaults(self):
             instance = cls(*args)
             for key in all_defaults:
-                if all_defaults[key].__class__ == type:
+                if inspect.isclass(all_defaults[key]):
                     assert isinstance(getattr(instance, key), all_defaults[key])
                 else:
                     assert getattr(instance, key) == all_defaults[key]
