@@ -66,17 +66,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         logger.info("Connecting to Hub...")
         connect_async = async_adapter.emulate_async(self._iothub_pipeline.connect)
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error connecting to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully connected to Hub")
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await connect_async(callback=callback)
         await callback.completion()
+
+        logger.info("Successfully connected to Hub")
 
     async def disconnect(self):
         """Disconnect the client from the Azure IoT Hub or Azure IoT Edge Hub instance.
@@ -84,17 +78,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         logger.info("Disconnecting from Hub...")
         disconnect_async = async_adapter.emulate_async(self._iothub_pipeline.disconnect)
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error disconnecting from hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully disconnected from Hub")
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await disconnect_async(callback=callback)
         await callback.completion()
+
+        logger.info("Successfully disconnected from Hub")
 
     async def send_d2c_message(self, message):
         """Sends a message to the default events endpoint on the Azure IoT Hub or Azure IoT Edge Hub instance.
@@ -111,17 +99,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         logger.info("Sending message to Hub...")
         send_d2c_message_async = async_adapter.emulate_async(self._iothub_pipeline.send_d2c_message)
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error sending message to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent message to Hub")
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await send_d2c_message_async(message, callback=callback)
         await callback.completion()
+
+        logger.info("Successfully sent message to Hub")
 
     async def receive_method_request(self, method_name=None):
         """Receive a method request via the Azure IoT Hub or Azure IoT Edge Hub.
@@ -157,18 +139,13 @@ class GenericIoTHubClient(AbstractIoTHubClient):
             self._iothub_pipeline.send_method_response
         )
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error sending method reponse to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent method response to Hub")
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
+        callback = async_adapter.AwaitableCallback()
 
         # TODO: maybe consolidate method_request, result and status into a new object
         await send_method_response_async(method_response, callback=callback)
         await callback.completion()
+
+        logger.info("Successfully sent method response to Hub")
 
     async def _enable_feature(self, feature_name):
         """Enable an Azure IoT Hub feature
@@ -179,17 +156,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         logger.info("Enabling feature:" + feature_name + "...")
         enable_feature_async = async_adapter.emulate_async(self._iothub_pipeline.enable_feature)
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error enabling feature {} : {}".format(feature_name, error))
-                raise error
-            else:
-                logger.info("Successfully enabled feature:" + feature_name)
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await enable_feature_async(feature_name, callback=callback)
         await callback.completion()
+
+        logger.info("Successfully enabled feature:" + feature_name)
 
     async def get_twin(self):
         """
@@ -204,18 +175,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
 
         get_twin_async = async_adapter.emulate_async(self._iothub_pipeline.get_twin)
 
-        def sync_callback(twin, error=None):
-            if error:
-                logger.info("Error connecting to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully retrieved twin")
-                return twin
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback(return_arg_name="twin")
         await get_twin_async(callback=callback)
-        return await callback.completion()
+        twin = await callback.completion()
+        logger.info("Successfully retrieved twin")
+        return twin
 
     async def patch_twin_reported_properties(self, reported_properties_patch):
         """
@@ -236,17 +200,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
             self._iothub_pipeline.patch_twin_reported_properties
         )
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error patching twin: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent twin patch")
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await patch_twin_async(patch=reported_properties_patch, callback=callback)
         await callback.completion()
+
+        logger.info("Successfully sent twin patch")
 
     async def receive_twin_desired_properties_patch(self):
         """
@@ -343,17 +301,11 @@ class IoTHubModuleClient(GenericIoTHubClient, AbstractIoTHubModuleClient):
             self._iothub_pipeline.send_output_event
         )
 
-        def sync_callback(error=None):
-            if error:
-                logger.info("Error sending output message to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent message to output: " + output_name)
-
-        callback = async_adapter.AwaitableCallback(sync_callback)
-
+        callback = async_adapter.AwaitableCallback()
         await send_output_event_async(message, callback=callback)
         await callback.completion()
+
+        logger.info("Successfully sent message to output: " + output_name)
 
     async def receive_input_message(self, input_name):
         """Receive an input message that has been sent from another Module to a specific input.

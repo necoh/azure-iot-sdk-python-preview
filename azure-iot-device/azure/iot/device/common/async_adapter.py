@@ -33,10 +33,8 @@ class AwaitableCallback(object):
     """A sync callback whose completion can be waited upon.
     """
 
-    def __init__(self, callback):
-        """Creates an instance of an AwaitableCallback from a callback function.
-
-        :param callback: Callback function to be made awaitable.
+    def __init__(self, return_arg_name=None):
+        """Creates an instance of an AwaitableCallback
         """
         loop = asyncio_compat.get_running_loop()
         self.future = asyncio_compat.create_future(loop)
@@ -45,12 +43,22 @@ class AwaitableCallback(object):
             # Use event loop from outer scope, since the threads it will be used in will not have
             # an event loop. future.set_result() and future.set_exception have to be called in an
             # event loop or they do not work.
-            try:
-                result = callback(*args, **kwargs)
-            except Exception as e:
-                loop.call_soon_thradsafe(self.future.set_exception, e)
+            if "error" in kwargs:
+                loop.call_soon_thradsafe(self.future.set_exception, kwargs["error"])
+            elif return_arg_name:
+                if return_arg_name in kwargs:
+                    loop.call_soon_threadsafe(self.future.set_result, kwargs[return_arg_name])
+                else:
+                    loop.call_soon_thradsafe(
+                        self.future.set_exception,
+                        TypeError(
+                            "internal error: excepected named argument {}, did not get".format(
+                                return_arg_name
+                            )
+                        ),
+                    )
             else:
-                loop.call_soon_threadsafe(self.future.set_result, result)
+                loop.call_soon_threadsafe(self.future.set_result, None)
 
         self.callback = wrapping_callback
 

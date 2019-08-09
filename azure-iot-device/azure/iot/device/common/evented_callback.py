@@ -3,8 +3,10 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EventedCallback(object):
@@ -12,23 +14,27 @@ class EventedCallback(object):
     A sync callback whose completion can be waited upon.
     """
 
-    def __init__(self, callback):
+    def __init__(self, return_arg_name=None):
         """
-        Creates an instance of an EventedCallback from a callback function.
+        Creates an instance of an EventedCallback.
 
-        :param callback: Callback function that can be waited on
         """
         self.completion_event = threading.Event()
         self.exception = None
         self.result = None
 
         def wrapping_callback(*args, **kwargs):
-            try:
-                result = callback(*args, **kwargs)
-            except Exception as e:
-                self.exception = e
-            else:
-                self.result = result
+            if "error" in kwargs:
+                self.exception = kwargs["error"]
+            elif return_arg_name:
+                if return_arg_name in kwargs:
+                    self.results = kwargs[return_arg_name]
+                else:
+                    self.exception = TypeError(
+                        "internal error: excepected named argument {}, did not get".format(
+                            return_arg_name
+                        )
+                    )
 
             self.completion_event.set()
 

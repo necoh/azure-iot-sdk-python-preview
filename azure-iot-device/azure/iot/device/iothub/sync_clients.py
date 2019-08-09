@@ -68,17 +68,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         """
         logger.info("Connecting to Hub...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error connecting to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully connected to Hub")
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.connect(callback=callback)
         callback.wait()
+
+        logger.info("Successfully connected to Hub")
 
     def disconnect(self):
         """Disconnect the client from the Azure IoT Hub or Azure IoT Edge Hub instance.
@@ -88,17 +82,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         """
         logger.info("Disconnecting from Hub...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error disconnecting from hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully disconnected from Hub")
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.disconnect(callback=callback)
         callback.wait()
+
+        logger.info("Successfully disconnected from Hub")
 
     def send_d2c_message(self, message):
         """Sends a message to the default events endpoint on the Azure IoT Hub or Azure IoT Edge Hub instance.
@@ -117,17 +105,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
 
         logger.info("Sending message to Hub...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error sending message to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent message to Hub")
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.send_d2c_message(message, callback=callback)
         callback.wait()
+
+        logger.info("Successfully sent message to Hub")
 
     def receive_method_request(self, method_name=None, block=True, timeout=None):
         """Receive a method request via the Azure IoT Hub or Azure IoT Edge Hub.
@@ -168,17 +150,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         """
         logger.info("Sending method response to Hub...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error sending method reponse to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent method response to Hub")
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.send_method_response(method_response, callback=callback)
         callback.wait()
+
+        logger.info("Successfully sent method response to Hub")
 
     def _enable_feature(self, feature_name):
         """Enable an Azure IoT Hub feature.
@@ -191,17 +167,11 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         """
         logger.info("Enabling feature:" + feature_name + "...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error enabling feature {} : {}".format(feature_name, error))
-                raise error
-            else:
-                logger.info("Successfully enabled feature:" + feature_name)
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.enable_feature(feature_name, callback=callback)
         callback.wait()
+
+        logger.info("Successfully enabled feature:" + feature_name)
 
     def get_twin(self):
         """
@@ -215,18 +185,12 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         if not self._iothub_pipeline.feature_enabled[constant.TWIN]:
             self._enable_feature(constant.TWIN)
 
-        def wrapped_callback(twin, error=None):
-            if error:
-                logger.info("Error connecting to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully retrieved twin")
-                return twin
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback(return_arg_name="twin")
         self._iothub_pipeline.get_twin(callback=callback)
-        return callback.wait()
+        twin = callback.wait()
+
+        logger.info("Successfully retrieved twin")
+        return twin
 
     def patch_twin_reported_properties(self, reported_properties_patch):
         """
@@ -244,20 +208,13 @@ class GenericIoTHubClient(AbstractIoTHubClient):
         if not self._iothub_pipeline.feature_enabled[constant.TWIN]:
             self._enable_feature(constant.TWIN)
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error patching twin: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully patched twin")
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.patch_twin_reported_properties(
             patch=reported_properties_patch, callback=callback
         )
         callback.wait()
-        print("Done with patch")
+
+        logger.info("Successfully patched twin")
 
     def receive_twin_desired_properties_patch(self, block=True, timeout=None):
         """
@@ -375,17 +332,11 @@ class IoTHubModuleClient(GenericIoTHubClient, AbstractIoTHubModuleClient):
 
         logger.info("Sending message to output:" + output_name + "...")
 
-        def wrapped_callback(error=None):
-            if error:
-                logger.info("Error sending output message to hub: {}".format(error))
-                raise error
-            else:
-                logger.info("Successfully sent message to output: " + output_name)
-
-        callback = EventedCallback(wrapped_callback)
-
+        callback = EventedCallback()
         self._iothub_pipeline.send_output_event(message, callback=callback)
         callback.wait()
+
+        logger.info("Successfully sent message to output: " + output_name)
 
     def receive_input_message(self, input_name, block=True, timeout=None):
         """Receive an input message that has been sent from another Module to a specific input.
