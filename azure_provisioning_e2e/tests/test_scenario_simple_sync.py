@@ -53,7 +53,10 @@ def before_test(request):
 def test_device_register_with_no_device_id_for_a_symmetric_key_individual_enrollment(
     before_module, before_test
 ):
-
+    DPS_SERVICE_CONN_STR = os.getenv("IOT_PROVISIONING_SERVICE_CONNECTION_STRING")
+    IOTHUB_REGISTRY_READ_CONN_STR = os.getenv("IOTHUB_CONNECTION_STRING")
+    PROVISIONING_HOST = os.getenv("IOT_PROVISIONING_DEVICE_ENDPOINT")
+    ID_SCOPE = os.getenv("IOT_PROVISIONING_DEVICE_IDSCOPE")
     service_client = ProvisioningServiceClient.create_from_connection_string(DPS_SERVICE_CONN_STR)
 
     registration_id = "e2e-dps-underthewhompingwillow"
