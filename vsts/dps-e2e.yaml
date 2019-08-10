@@ -32,10 +32,10 @@ jobs:
   - script: 'python -m pip install azure-iot-device'
     displayName: 'Install provisioning device SDK'
 
-  - script: 'python -m pip install azure-iothub-provisioningserviceclient'
-    displayName: 'Install provisioning service SDK'
+  - script: 'python -m pip install -U -r requirements_test.txt'
+    displayName: 'Install provisioning service SDK and pytest'
 
-  - script: 'python pytest test_scenario_simple_sync.py'
+  - script: 'python pytest $(Build.SourcesDirectory)/azure_provisioning_e2e/tests/test_scenario_simple_sync.py'
     displayName: 'Run Specified E2E Test with env variables'
 
     env:
