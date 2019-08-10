@@ -55,28 +55,54 @@ def create_custom_config():
         local_file.write("\n".join(list_of_lines) + "\n")
 
 
-def create_verification_cert(nonce):
-    os.system("openssl genrsa -out demoCA/private/verification_key.pem" + " " + str(key_size))
+def create_verification_cert(nonce, root_verify):
+
     print("Done generating verification key")
     subject = "//C=US/CN=" + nonce
 
-    os.system(
-        "openssl req -key demoCA/private/verification_key.pem"
-        + " "
-        + "-new -out demoCA/newcerts/verification_csr.pem -subj "
-        + subject
-    )
-    print("Done generating verification CSR")
+    if not root_verify:
+        os.system(
+            "openssl genrsa -out demoCA/private/verification_inter_key.pem" + " " + str(key_size)
+        )
+        os.system(
+            "openssl req -key demoCA/private/verification_inter_key.pem"
+            + " "
+            + "-new -out demoCA/newcerts/verification_inter_csr.pem -subj "
+            + subject
+        )
+        print("Done generating verification CSR for intermediate")
 
-    os.system(
-        "openssl x509 -req -in demoCA/newcerts/verification_csr.pem"
-        + " "
-        + "-CA demoCA/newcerts/ca_cert.pem -CAkey demoCA/private/ca_key.pem -passin pass:"
-        + ca_password
-        + " "
-        + "-CAcreateserial -out demoCA/newcerts/verification_cert.pem -days 300 -sha256"
-    )
-    print("Done generating verification certificate. Upload to IoT Hub to verify")
+        os.system(
+            "openssl x509 -req -in demoCA/newcerts/verification_inter_csr.pem"
+            + " "
+            + "-CA demoCA/newcerts/intermediate_cert.pem -CAkey demoCA/private/intermediate_key.pem -passin pass:"
+            + intermediate_password
+            + " "
+            + "-CAcreateserial -out demoCA/newcerts/verification_inter_cert.pem -days 300 -sha256"
+        )
+        print(
+            "Done generating verification certificate for intermediate. Upload to IoT Hub to verify"
+        )
+
+    else:
+        os.system("openssl genrsa -out demoCA/private/verification_key.pem" + " " + str(key_size))
+        os.system(
+            "openssl req -key demoCA/private/verification_root_key.pem"
+            + " "
+            + "-new -out demoCA/newcerts/verification_root_csr.pem -subj "
+            + subject
+        )
+        print("Done generating verification CSR")
+
+        os.system(
+            "openssl x509 -req -in demoCA/newcerts/verification_root_csr.pem"
+            + " "
+            + "-CA demoCA/newcerts/ca_cert.pem -CAkey demoCA/private/ca_key.pem -passin pass:"
+            + ca_password
+            + " "
+            + "-CAcreateserial -out demoCA/newcerts/verification_root_cert.pem -days 300 -sha256"
+        )
+        print("Done generating verification certificate. Upload to IoT Hub to verify")
 
 
 def create_directories():
@@ -107,7 +133,9 @@ def create_certificate_chain(
         "openssl req -config demoCA/openssl.cnf -key demoCA/private/ca_key.pem -passin pass:"
         + ca_password
         + " "
-        + "-new -x509 -days 300 -sha256 -extensions v3_ca -out demoCA/newcerts/ca_cert.pem -subj "
+        + "-new -x509 -days "
+        + str(days)
+        + " -sha256 -extensions v3_ca -out demoCA/newcerts/ca_cert.pem -subj "
         + subject
     )
     print("Done generating root certificate")
@@ -132,7 +160,9 @@ def create_certificate_chain(
         "openssl ca -config demoCA/openssl.cnf -in demoCA/newcerts/intermediate_csr.pem -out demoCA/newcerts/intermediate_cert.pem -keyfile demoCA/private/ca_key.pem -cert demoCA/newcerts/ca_cert.pem -passin pass:"
         + ca_password
         + " "
-        + "-extensions v3_ca -days 30 -notext -md sha256 -batch"
+        + "-extensions v3_ca -days "
+        + str(days)
+        + " -notext -md sha256 -batch"
     )
     print("Done generating intermediate certificate")
 
@@ -178,7 +208,9 @@ def create_leaf_certificates(index, device_password):
         + " -keyfile demoCA/private/intermediate_key.pem -cert demoCA/newcerts/intermediate_cert.pem -passin pass:"
         + intermediate_password
         + " "
-        + "-extensions usr_cert -days 3 -notext -md sha256 -batch"
+        + "-extensions usr_cert -days "
+        + str(days)
+        + " -notext -md sha256 -batch"
     )
     print("Done generating device certificate")
 
@@ -223,6 +255,11 @@ if __name__ == "__main__":
         type=str,
         help="thumprint generated from iot hub certificates. During verification mode if omitted it will be prompted.",
     )
+    parser.add_argument(
+        "--root-verify",
+        type=str,
+        help="The boolean value to enter in case it is the root or intermediate verification. By default it is True meaning root verifictaion. If veriication of intermediate certification is needed please enter False ",
+    )
     args = parser.parse_args()
     if args.key_size:
         key_size = args.key_size
@@ -237,11 +274,6 @@ if __name__ == "__main__":
         common_name = args.domain
     else:
         common_name = "random"
-
-    if args.ca_password:
-        ca_password = args.ca_password
-    else:
-        ca_password = getpass.getpass("Enter pass phrase for root key: ")
 
     if args.mode:
         if args.mode == "verification":
@@ -259,6 +291,10 @@ if __name__ == "__main__":
     create_custom_config()
 
     if mode == "non-verification":
+        if args.ca_password:
+            ca_password = args.ca_password
+        else:
+            ca_password = getpass.getpass("Enter pass phrase for root key: ")
         if args.intermediate_password:
             intermediate_password = args.intermediate_password
         else:
@@ -277,9 +313,31 @@ if __name__ == "__main__":
             nonce = args.nonce
         else:
             nonce = getpass.getpass("Enter nonce for verification mode")
+        if args.root_verify:
+            lower_root_verify = args.root_verify.lower()
+            if lower_root_verify == "false":
+                root_verify = False
+                if args.intermediate_password:
+                    intermediate_password = args.intermediate_password
+                else:
+                    intermediate_password = getpass.getpass(
+                        "Enter pass phrase for intermediate key: "
+                    )
+            else:
+                root_verify = True
+                if args.ca_password:
+                    ca_password = args.ca_password
+                else:
+                    ca_password = getpass.getpass("Enter pass phrase for root key: ")
+        else:
+            root_verify = True
+            if args.ca_password:
+                ca_password = args.ca_password
+            else:
+                ca_password = getpass.getpass("Enter pass phrase for root key: ")
 
     if mode == "verification":
-        create_verification_cert(nonce)
+        create_verification_cert(nonce, root_verify)
     else:
         create_directories()
         create_certificate_chain(
