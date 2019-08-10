@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 import threading
 import logging
+import six
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +20,35 @@ class EventedCallback(object):
         Creates an instance of an EventedCallback.
 
         """
+        # LBYL because this mistake doesn't cause an exception until the callback
+        # which is much later and very difficult to trace back to here.
+        if return_arg_name and not isinstance(return_arg_name, six.string_types):
+            raise TypeError("internal error: return_arg_name must be a string")
+
         self.completion_event = threading.Event()
         self.exception = None
         self.result = None
 
         def wrapping_callback(*args, **kwargs):
-            if "error" in kwargs:
+            if "error" in kwargs and kwargs["error"]:
+                logger.error("Callback called with error {}".format(kwargs["error"]))
                 self.exception = kwargs["error"]
             elif return_arg_name:
                 if return_arg_name in kwargs:
-                    self.results = kwargs[return_arg_name]
+                    self.result = kwargs[return_arg_name]
                 else:
                     self.exception = TypeError(
-                        "internal error: excepected named argument {}, did not get".format(
+                        "internal error: excepected argument with name '{}', did not get".format(
                             return_arg_name
                         )
                     )
+            if self.exception:
+                logger.error(
+                    "Callback completed with error {}".format(self.exception),
+                    exc_info=self.exception,
+                )
+            else:
+                logger.error("Callback completed with result {}".format(self.result))
 
             self.completion_event.set()
 

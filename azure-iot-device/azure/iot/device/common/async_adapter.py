@@ -6,7 +6,12 @@
 """This module contains tools for adapting sync code for use in async coroutines."""
 
 import functools
+import logging
+import six
+import traceback
 import azure.iot.device.common.asyncio_compat as asyncio_compat
+
+logger = logging.getLogger(__name__)
 
 
 def emulate_async(fn):
@@ -36,6 +41,12 @@ class AwaitableCallback(object):
     def __init__(self, return_arg_name=None):
         """Creates an instance of an AwaitableCallback
         """
+
+        # LBYL because this mistake doesn't cause an exception until the callback
+        # which is much later and very difficult to trace back to here.
+        if return_arg_name and not isinstance(return_arg_name, six.string_types):
+            raise TypeError("internal error: return_arg_name must be a string")
+
         loop = asyncio_compat.get_running_loop()
         self.future = asyncio_compat.create_future(loop)
 
@@ -43,22 +54,31 @@ class AwaitableCallback(object):
             # Use event loop from outer scope, since the threads it will be used in will not have
             # an event loop. future.set_result() and future.set_exception have to be called in an
             # event loop or they do not work.
-            if "error" in kwargs:
-                loop.call_soon_thradsafe(self.future.set_exception, kwargs["error"])
+            if "error" in kwargs and kwargs["error"]:
+                exception = kwargs["error"]
             elif return_arg_name:
                 if return_arg_name in kwargs:
-                    loop.call_soon_threadsafe(self.future.set_result, kwargs[return_arg_name])
+                    exception = None
+                    result = kwargs[return_arg_name]
                 else:
-                    loop.call_soon_thradsafe(
-                        self.future.set_exception,
-                        TypeError(
-                            "internal error: excepected named argument {}, did not get".format(
-                                return_arg_name
-                            )
-                        ),
+                    exception = TypeError(
+                        "internal error: excepected argument with name '{}', did not get".format(
+                            return_arg_name
+                        )
                     )
             else:
-                loop.call_soon_threadsafe(self.future.set_result, None)
+                exception = None
+                result = None
+
+            if exception:
+                raise Exception()
+                logger.error(
+                    "Callback completed with error {}".format(exception), exc_info=exception
+                )
+                loop.call_soon_threadsafe(self.future.set_exception, exception)
+            else:
+                logger.error("Callback completed with result {}".format(result))
+                loop.call_soon_threadsafe(self.future.set_result, result)
 
         self.callback = wrapping_callback
 

@@ -87,7 +87,7 @@ class TestClientCreate(object):
 
 class FakePollingMachineSuccess(PollingMachine):
     def register(self, callback):
-        callback(create_success_result(), error=None)
+        callback(result=create_success_result(), error=None)
 
     def cancel(self, callback):
         callback()

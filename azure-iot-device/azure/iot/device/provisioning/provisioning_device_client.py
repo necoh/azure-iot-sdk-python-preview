@@ -7,7 +7,7 @@
 This module contains one of the implementations of the Provisioning Device Client which uses Symmetric Key authentication.
 """
 import logging
-from threading import Event
+from azure.iot.device.common.evented_callback import EventedCallback
 from .abstract_provisioning_device_client import AbstractProvisioningDeviceClient
 from .abstract_provisioning_device_client import log_on_register_complete
 from .internal.polling_machine import PollingMachine
@@ -40,15 +40,12 @@ class ProvisioningDeviceClient(AbstractProvisioningDeviceClient):
         If a registration attempt is made while a previous registration is in progress it may throw an error.
         """
         logger.info("Registering with Provisioning Service...")
-        register_complete = Event()
 
-        def on_register_complete(result=None, error=None):
-            log_on_register_complete(result, error)
-            register_complete.set()
+        register_complete = EventedCallback()
+        self._polling_machine.register(callback=register_complete)
+        result = register_complete.wait()
 
-        self._polling_machine.register(callback=on_register_complete)
-
-        register_complete.wait()
+        log_on_register_complete(result)
 
     def cancel(self):
         """
@@ -60,11 +57,9 @@ class ProvisioningDeviceClient(AbstractProvisioningDeviceClient):
         no registration process to cancel.
         """
         logger.info("Cancelling the current registration process")
-        cancel_complete = Event()
 
-        def on_cancel_complete():
-            cancel_complete.set()
-            logger.info("Successfully cancelled the current registration process")
-
-        self._polling_machine.cancel(callback=on_cancel_complete)
+        cancel_complete = EventedCallback()
+        self._polling_machine.cancel(callback=cancel_complete)
         cancel_complete.wait()
+
+        logger.info("Successfully cancelled the current registration process")

@@ -64,7 +64,7 @@ class TestEmulateAsync(object):
 
 
 @pytest.mark.describe("AwaitableCallback")
-class TestAwaitableCallback(object):
+class FixTestAwaitableCallback(object):
     @pytest.mark.it("Instantiates from a provided callback function")
     async def test_instantiates(self, mock_function):
         callback = async_adapter.AwaitableCallback(mock_function)

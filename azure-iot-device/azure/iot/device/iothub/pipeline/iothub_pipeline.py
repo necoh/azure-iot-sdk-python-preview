@@ -96,12 +96,7 @@ class IoTHubPipeline(object):
         self._pipeline.on_connected = _handle_connected
         self._pipeline.on_disconnected = _handle_disconnected
 
-        def wrapped_callback(call):
-            logger.info("{}: auth provider init complete")
-            if call.error:
-                raise call.error
-
-        callback = EventedCallback(wrapped_callback)
+        callback = EventedCallback()
 
         if isinstance(auth_provider, X509AuthenticationProvider):
             op = pipeline_ops_iothub.SetX509AuthProviderOperation(

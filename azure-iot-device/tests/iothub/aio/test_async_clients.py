@@ -431,11 +431,17 @@ class SharedClientSendMethodResponseTests(object):
 
 
 class SharedClientGetTwinTests(object):
+    @pytest.fixture
+    def fake_twin(self):
+        return {"fake_twin": True}
+
     @pytest.mark.it("Implicitly enables twin messaging feature if not already enabled")
-    async def test_enables_twin_only_if_not_already_enabled(self, mocker, client, iothub_pipeline):
+    async def test_enables_twin_only_if_not_already_enabled(
+        self, mocker, client, iothub_pipeline, fake_twin
+    ):
         # patch this so get_twin won't block
         def immediate_callback(callback):
-            callback(None)
+            callback(twin=fake_twin)
 
         mocker.patch.object(iothub_pipeline, "get_twin", side_effect=immediate_callback)
 
@@ -455,7 +461,11 @@ class SharedClientGetTwinTests(object):
         assert iothub_pipeline.enable_feature.call_count == 0
 
     @pytest.mark.it("Begins a 'get_twin' pipeline operation")
-    async def test_get_twin_calls_pipeline(self, client, iothub_pipeline):
+    async def test_get_twin_calls_pipeline(self, client, iothub_pipeline, mocker, fake_twin):
+        def immediate_callback(callback):
+            callback(twin=fake_twin)
+
+        mocker.patch.object(iothub_pipeline, "get_twin", side_effect=immediate_callback)
         await client.get_twin()
         assert iothub_pipeline.get_twin.call_count == 1
 
@@ -475,17 +485,16 @@ class SharedClientGetTwinTests(object):
         assert cb_mock.completion.call_count == 1
 
     @pytest.mark.it("Returns the twin that the pipeline returned")
-    async def test_verifies_twin_returned(self, mocker, client, iothub_pipeline):
-        twin = {"reported": {"foo": "bar"}}
+    async def test_verifies_twin_returned(self, mocker, client, iothub_pipeline, fake_twin):
 
         # make the pipeline the twin
         def immediate_callback(callback):
-            callback(twin)
+            callback(twin=fake_twin)
 
         mocker.patch.object(iothub_pipeline, "get_twin", side_effect=immediate_callback)
 
         returned_twin = await client.get_twin()
-        assert returned_twin == twin
+        assert returned_twin == fake_twin
 
 
 class SharedClientPatchTwinReportedPropertiesTests(object):

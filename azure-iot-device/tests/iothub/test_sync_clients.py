@@ -521,14 +521,21 @@ class SharedClientSendMethodResponseTests(WaitsForEventCompletion):
 
 
 class SharedClientGetTwinTests(WaitsForEventCompletion):
-    @pytest.mark.it("Implicitly enables twin messaging feature if not already enabled")
-    def test_enables_twin_only_if_not_already_enabled(self, mocker, client, iothub_pipeline):
-        # patch this so get_twin won't block
+    @pytest.fixture
+    def fake_twin(self):
+        return {"fake_twin": True}
+
+    @pytest.fixture
+    def patch_get_twin_to_return_fake_twin(self, fake_twin, mocker, iothub_pipeline):
         def immediate_callback(callback):
-            callback(None)
+            callback(twin=fake_twin)
 
         mocker.patch.object(iothub_pipeline, "get_twin", side_effect=immediate_callback)
 
+    @pytest.mark.it("Implicitly enables twin messaging feature if not already enabled")
+    def test_enables_twin_only_if_not_already_enabled(
+        self, mocker, client, iothub_pipeline, patch_get_twin_to_return_fake_twin, fake_twin
+    ):
         # Verify twin enabled if not enabled
         iothub_pipeline.feature_enabled.__getitem__.return_value = (
             False
@@ -545,7 +552,9 @@ class SharedClientGetTwinTests(WaitsForEventCompletion):
         assert iothub_pipeline.enable_feature.call_count == 0
 
     @pytest.mark.it("Begins a 'get_twin' pipeline operation")
-    def test_get_twin_calls_pipeline(self, client, iothub_pipeline):
+    def test_get_twin_calls_pipeline(
+        self, client, iothub_pipeline, patch_get_twin_to_return_fake_twin
+    ):
         client.get_twin()
         assert iothub_pipeline.get_twin.call_count == 1
 
@@ -553,21 +562,26 @@ class SharedClientGetTwinTests(WaitsForEventCompletion):
         "Waits for the completion of the 'get_twin' pipeline operation before returning"
     )
     def test_waits_for_pipeline_op_completion(
-        self, mocker, client_manual_cb, iothub_pipeline_manual_cb
+        self, mocker, client_manual_cb, iothub_pipeline_manual_cb, fake_twin
     ):
         self.add_event_completion_checks(
-            mocker=mocker, pipeline_function=iothub_pipeline_manual_cb.get_twin, args=[None]
+            mocker=mocker,
+            pipeline_function=iothub_pipeline_manual_cb.get_twin,
+            kwargs=dict(twin=fake_twin),
         )
         client_manual_cb.get_twin()
 
     @pytest.mark.it("Returns the twin that the pipeline returned")
-    def test_verifies_twin_returned(self, mocker, client_manual_cb, iothub_pipeline_manual_cb):
-        twin = {"reported": {"foo": "bar"}}
+    def test_verifies_twin_returned(
+        self, mocker, client_manual_cb, iothub_pipeline_manual_cb, fake_twin
+    ):
         self.add_event_completion_checks(
-            mocker=mocker, pipeline_function=iothub_pipeline_manual_cb.get_twin, args=[twin]
+            mocker=mocker,
+            pipeline_function=iothub_pipeline_manual_cb.get_twin,
+            kwargs=dict(twin=fake_twin),
         )
         returned_twin = client_manual_cb.get_twin()
-        assert returned_twin == twin
+        assert returned_twin == fake_twin
 
 
 class SharedClientPatchTwinReportedPropertiesTests(WaitsForEventCompletion):

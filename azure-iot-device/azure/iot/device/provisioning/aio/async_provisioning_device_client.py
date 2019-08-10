@@ -45,13 +45,11 @@ class ProvisioningDeviceClient(AbstractProvisioningDeviceClient):
         logger.info("Registering with Provisioning Service...")
         register_async = async_adapter.emulate_async(self._polling_machine.register)
 
-        def sync_on_register_complete(result=None, error=None):
-            log_on_register_complete(result, error)
-
-        callback = async_adapter.AwaitableCallback(sync_on_register_complete)
-
+        callback = async_adapter.AwaitableCallback(return_arg_name="result")
         await register_async(callback=callback)
-        await callback.completion()
+        result = await callback.completion()
+
+        log_on_register_complete(result)
 
     async def cancel(self):
         """
@@ -63,10 +61,8 @@ class ProvisioningDeviceClient(AbstractProvisioningDeviceClient):
         logger.info("Disconnecting from Provisioning Service...")
         cancel_async = async_adapter.emulate_async(self._polling_machine.cancel)
 
-        def sync_on_cancel_complete():
-            logger.info("Successfully cancelled the current registration process")
-
-        callback = async_adapter.AwaitableCallback(sync_on_cancel_complete)
-
+        callback = async_adapter.AwaitableCallback()
         await cancel_async(callback=callback)
         await callback.completion()
+
+        logger.info("Successfully cancelled the current registration process")
