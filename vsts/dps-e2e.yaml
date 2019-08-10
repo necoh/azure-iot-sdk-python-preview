@@ -35,8 +35,10 @@ jobs:
   - script: 'python -m pip install -U -r requirements_test.txt'
     displayName: 'Install provisioning service SDK and pytest'
 
-  - script: 'pytest $(Build.SourcesDirectory)/azure_provisioning_e2e/tests/test_scenario_simple_sync.py'
-    displayName: 'Run Specified E2E Test with env variables'
+#  - script: 'pytest $(Build.SourcesDirectory)/azure_provisioning_e2e/tests/test_scenario_simple_sync.py'
+#    displayName: 'Run Specified E2E Test with env variables'
+
+   - script: echo hello world $IOTHUB_CONNECTION_STRING $(PYTHONPREVIEW-LINUX-IOTHUB-CONNECTION-STRING)
 
     env:
       IOTHUB_CONNECTION_STRING: $(PYTHONPREVIEW-LINUX-IOTHUB-CONNECTION-STRING)
