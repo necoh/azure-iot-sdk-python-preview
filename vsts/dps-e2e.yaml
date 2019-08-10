@@ -38,7 +38,8 @@ jobs:
 #  - script: 'pytest $(Build.SourcesDirectory)/azure_provisioning_e2e/tests/test_scenario_simple_sync.py'
 #    displayName: 'Run Specified E2E Test with env variables'
 
-   - script: echo hello world $IOTHUB_CONNECTION_STRING $(PYTHONPREVIEW-LINUX-IOTHUB-CONNECTION-STRING)
+  - script: echo hello world $IOTHUB_CONNECTION_STRING
+     displayName: 'see if it works'
 
     env:
       IOTHUB_CONNECTION_STRING: $(PYTHONPREVIEW-LINUX-IOTHUB-CONNECTION-STRING)
