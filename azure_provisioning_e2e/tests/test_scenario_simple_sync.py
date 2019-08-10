@@ -95,9 +95,6 @@ def test_device_register_with_no_device_id_for_a_symmetric_key_individual_enroll
 
     service_client.delete_individual_enrollment_by_param(registration_id)
 
-    time.sleep(10)
-
-
 # @pytest.mark.it(
 #     "A device gets provisioned to the linked IoTHub with the user supplied device_id when a symmetric key individual enrollment has been created"
 # )
