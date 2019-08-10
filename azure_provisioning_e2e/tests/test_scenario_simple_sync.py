@@ -93,6 +93,8 @@ def test_device_register_with_no_device_id_for_a_symmetric_key_individual_enroll
     assert device.authentication.type == "sas"
     assert device.device_id == registration_id
 
+    service_client.delete(individual_provisioning_model)
+
 
 # @pytest.mark.it(
 #     "A device gets provisioned to the linked IoTHub with the user supplied device_id when a symmetric key individual enrollment has been created"
