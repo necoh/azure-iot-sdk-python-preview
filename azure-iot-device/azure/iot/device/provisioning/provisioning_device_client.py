@@ -41,14 +41,17 @@ class ProvisioningDeviceClient(AbstractProvisioningDeviceClient):
         """
         logger.info("Registering with Provisioning Service...")
         register_complete = Event()
+        registration_result = [1]
 
         def on_register_complete(result=None, error=None):
             log_on_register_complete(result, error)
+            registration_result[0] = result
             register_complete.set()
 
         self._polling_machine.register(callback=on_register_complete)
 
         register_complete.wait()
+        return registration_result[0]
 
     def cancel(self):
         """

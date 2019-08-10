@@ -5,6 +5,9 @@
 # --------------------------------------------------------------------------
 import os
 from azure.iot.device import ProvisioningDeviceClient
+import logging
+
+logging.basicConfig(level=logging.ERROR)
 
 provisioning_host = os.getenv("PROVISIONING_HOST")
 id_scope = os.getenv("PROVISIONING_IDSCOPE")
@@ -18,4 +21,6 @@ provisioning_device_client = ProvisioningDeviceClient.create_from_symmetric_key(
     symmetric_key=symmetric_key,
 )
 
-provisioning_device_client.register()
+registration_result = provisioning_device_client.register()
+
+print(registration_result)
