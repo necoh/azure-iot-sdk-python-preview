@@ -57,10 +57,16 @@ jobs:
 #      IOTHUB_CONN_STRING_INVALID_CERT: $(IOTHUB-CONN-STRING-INVALID-CERT)
 #      IOTHUB_DEVICE_CONN_STRING_INVALID_CERT: $(IOTHUB-DEVICE-CONN-STRING-INVALID-CERT)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish Test Results **/*-dps-e2e-test-results.xml'
-    inputs:
-      testResultsFiles: '**/*-dps-e2e-test-results.xml'
-      testRunTitle: 'Python $(python.version)'
-    condition: always()
+#  - task: PublishTestResults@2
+#    displayName: 'Publish Test Results **/*-dps-e2e-test-results.xml'
+#    inputs:
+#      testResultsFiles: '**/*-dps-e2e-test-results.xml'
+#      testRunTitle: 'Python $(python.version)'
+#    condition: always()
 
+  - task: PublishTestResults@2
+    displayName: 'Publish Test Results'
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFiles: '**/test-*.xml'
+      testRunTitle: 'Publish test results for Python $(python.version)'
