@@ -27,6 +27,7 @@ PROVISIONING_HOST = os.getenv("IOT_PROVISIONING_DEVICE_ENDPOINT")
 ID_SCOPE = os.getenv("IOT_PROVISIONING_DEVICE_IDSCOPE")
 
 
+
 @pytest.fixture(scope="module")
 def before_module(request):
     print("set up before all tests")
@@ -48,16 +49,11 @@ def before_test(request):
 
 
 @pytest.mark.it(
-    "A device gets provisioned to the linked IoTHub with the device_id same as the registration_id when a symmetric key individual enrollment has been created"
+    "A device gets provisioned to the linked IoTHub with the device_id equal to the registration_id when a symmetric key individual enrollment has been created"
 )
 def test_device_register_with_no_device_id_for_a_symmetric_key_individual_enrollment(
     before_module, before_test
 ):
-    # DPS_SERVICE_CONN_STR = os.getenv("IOT_PROVISIONING_SERVICE_CONNECTION_STRING")
-    # print(DPS_SERVICE_CONN_STR)
-    # IOTHUB_REGISTRY_READ_CONN_STR = os.getenv("IOTHUB_CONNECTION_STRING")
-    # PROVISIONING_HOST = os.getenv("IOT_PROVISIONING_DEVICE_ENDPOINT")
-    # ID_SCOPE = os.getenv("IOT_PROVISIONING_DEVICE_IDSCOPE")
     service_client = ProvisioningServiceClient.create_from_connection_string(DPS_SERVICE_CONN_STR)
 
     registration_id = "e2e-dps-underthewhompingwillow"
@@ -95,46 +91,48 @@ def test_device_register_with_no_device_id_for_a_symmetric_key_individual_enroll
 
     service_client.delete_individual_enrollment_by_param(registration_id)
 
-# @pytest.mark.it(
-#     "A device gets provisioned to the linked IoTHub with the user supplied device_id when a symmetric key individual enrollment has been created"
-# )
-# def test_device_register_with_device_id_for_a_symmetric_key_individual_enrollment(before_test):
-#
-#     registration_id = "e2e-dps-prioriincantatem"
-#     device_id = "e2e-dps-tommarvoloriddle"
-#     reprovision_policy = ReprovisionPolicy(migrate_device_data=True)
-#     attestation_mechanism = AttestationMechanism(type="symmetricKey")
-#
-#     individual_provisioning_model = IndividualEnrollment.create(
-#         attestation=attestation_mechanism,
-#         registration_id=registration_id,
-#         device_id=device_id,
-#         reprovision_policy=reprovision_policy,
-#     )
-#
-#     service_client = ProvisioningServiceClient.create_from_connection_string(DPS_SERVICE_CONN_STR)
-#     individual_enrollment_record = service_client.create_or_update(individual_provisioning_model)
-#
-#     time.sleep(3)
-#
-#     registration_id = individual_enrollment_record.registration_id
-#     symmetric_key = individual_enrollment_record.attestation.symmetric_key.primary_key
-#
-#     provisioning_device_client = ProvisioningDeviceClient.create_from_symmetric_key(
-#         provisioning_host=PROVISIONING_HOST,
-#         registration_id=registration_id,
-#         id_scope=ID_SCOPE,
-#         symmetric_key=symmetric_key,
-#     )
-#
-#     provisioning_device_client.register()
-#
-#     helper = Helper(IOTHUB_REGISTRY_READ_CONN_STR)
-#     device = helper.get_device(device_id)
-#
-#     assert device is not None
-#     assert device.authentication.type == "sas"
-#     assert device.device_id == device_id
+@pytest.mark.it(
+    "A device gets provisioned to the linked IoTHub with the user supplied device_id when a symmetric key individual enrollment has been created"
+)
+def test_device_register_with_device_id_for_a_symmetric_key_individual_enrollment(before_test):
+
+    registration_id = "e2e-dps-prioriincantatem"
+    device_id = "e2e-dps-tommarvoloriddle"
+    reprovision_policy = ReprovisionPolicy(migrate_device_data=True)
+    attestation_mechanism = AttestationMechanism(type="symmetricKey")
+
+    individual_provisioning_model = IndividualEnrollment.create(
+        attestation=attestation_mechanism,
+        registration_id=registration_id,
+        device_id=device_id,
+        reprovision_policy=reprovision_policy,
+    )
+
+    service_client = ProvisioningServiceClient.create_from_connection_string(DPS_SERVICE_CONN_STR)
+    individual_enrollment_record = service_client.create_or_update(individual_provisioning_model)
+
+    time.sleep(3)
+
+    registration_id = individual_enrollment_record.registration_id
+    symmetric_key = individual_enrollment_record.attestation.symmetric_key.primary_key
+
+    provisioning_device_client = ProvisioningDeviceClient.create_from_symmetric_key(
+        provisioning_host=PROVISIONING_HOST,
+        registration_id=registration_id,
+        id_scope=ID_SCOPE,
+        symmetric_key=symmetric_key,
+    )
+
+    provisioning_device_client.register()
+
+    helper = Helper(IOTHUB_REGISTRY_READ_CONN_STR)
+    device = helper.get_device(device_id)
+
+    assert device is not None
+    assert device.authentication.type == "sas"
+    assert device.device_id == device_id
+
+    service_client.delete_individual_enrollment_by_param(registration_id)
 #
 #
 # @pytest.mark.it(
