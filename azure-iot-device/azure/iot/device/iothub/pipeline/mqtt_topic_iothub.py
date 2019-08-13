@@ -205,6 +205,8 @@ def extract_properties_from_topic(topic, message_received):
                 message_received.content_type = value
             elif key == "$.ce":
                 message_received.content_encoding = value
+            elif key == "$.ifid":
+                message_received.iothub_interface_id = value
             else:
                 message_received.custom_properties[key] = value
 
@@ -242,6 +244,9 @@ def encode_properties(message_to_send, topic):
 
     if message_to_send.content_encoding:
         system_properties.append(("$.ce", message_to_send.content_encoding))
+
+    if message_to_send.iothub_interface_id:
+        system_properties.append(("$.ifid", message_to_send.iothub_interface_id))
 
     if message_to_send.expiry_time_utc:
         system_properties.append(

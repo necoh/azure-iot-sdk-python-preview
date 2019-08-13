@@ -66,7 +66,7 @@ fake_output_name = "__fake_output_name__"
 fake_content_type = "text/json"
 fake_content_type_encoded = "%24.ct=text%2Fjson"
 fake_message = Message(fake_message_body)
-
+security_message_interface_id_encoded = "%24.ifid=urn%3Aazureiot%3ASecurity%3ASecurityAgent%3A1"
 fake_request_id = "__fake_request_id__"
 fake_method_name = "__fake_method_name__"
 fake_method_payload = "__fake_method_payload__"
@@ -111,7 +111,6 @@ fake_message_user_property_2_value = "hufflepuff"
 fake_message_user_property_1_encoded = "is-muggle=yes"
 fake_message_user_property_2_encoded = "sorted-house=hufflepuff"
 
-
 ops_handled_by_this_stage = [
     pipeline_ops_iothub.SetIoTHubConnectionArgsOperation,
     pipeline_ops_iothub.SendD2CMessageOperation,
@@ -142,6 +141,12 @@ def create_message_with_user_properties(message_content, is_multiple):
     return m
 
 
+def create_security_message(message_content):
+    msg = Message(message_content, content_type=fake_content_type)
+    msg.set_as_security_message()
+    return msg
+
+
 def create_message_with_system_and_user_properties(message_content, is_multiple):
     if is_multiple:
         msg = Message(message_content, message_id=fake_message_id, content_type=fake_content_type)
@@ -151,6 +156,19 @@ def create_message_with_system_and_user_properties(message_content, is_multiple)
     msg.custom_properties[fake_message_user_property_1_key] = fake_message_user_property_1_value
     if is_multiple:
         msg.custom_properties[fake_message_user_property_2_key] = fake_message_user_property_2_value
+    return msg
+
+
+def create_security_message_with_system_and_user_properties(message_content, is_multiple):
+    if is_multiple:
+        msg = Message(message_content, message_id=fake_message_id, content_type=fake_content_type)
+    else:
+        msg = Message(message_content, message_id=fake_message_id)
+
+    msg.custom_properties[fake_message_user_property_1_key] = fake_message_user_property_1_value
+    if is_multiple:
+        msg.custom_properties[fake_message_user_property_2_key] = fake_message_user_property_2_value
+    msg.set_as_security_message()
     return msg
 
 
@@ -346,7 +364,7 @@ class TestIoTHubMQTTConverterWithSetAuthProviderArgs(object):
         "Calls the SetIoTHubConnectionArgsOperation callback with error if the pipeline_ops_mqtt.SetMQTTConnectionArgsOperation raises an Exception"
     )
     def test_set_connection_args_raises_exception(
-        self, stage, mocker, fake_exception, set_connection_args
+            self, stage, mocker, fake_exception, set_connection_args
     ):
         stage.next._execute_op = mocker.Mock(side_effect=fake_exception)
         stage.run_op(set_connection_args)
@@ -356,7 +374,7 @@ class TestIoTHubMQTTConverterWithSetAuthProviderArgs(object):
         "Allows any BaseExceptions raised inside the pipeline_ops_mqtt.SetMQTTConnectionArgsOperation operation to propagate"
     )
     def test_set_connection_args_raises_base_exception(
-        self, stage, mocker, fake_base_exception, set_connection_args
+            self, stage, mocker, fake_base_exception, set_connection_args
     ):
         stage.next._execute_op = mocker.Mock(side_effect=fake_base_exception)
         with pytest.raises(UnhandledException):
@@ -420,7 +438,7 @@ class TestIoTHubMQTTConverterBasicOperations(object):
 
     @pytest.mark.it("Calls the original op callback with error if the new_op raises an exception")
     def test_operation_raises_exception(
-        self, params, mocker, stage, stages_configured_for_both, op, fake_exception
+            self, params, mocker, stage, stages_configured_for_both, op, fake_exception
     ):
         stage.next._execute_op = mocker.Mock(side_effect=fake_exception)
         stage.run_op(op)
@@ -428,7 +446,7 @@ class TestIoTHubMQTTConverterBasicOperations(object):
 
     @pytest.mark.it("Allows any any BaseExceptions raised in the new_op to propagate")
     def test_operation_raises_base_exception(
-        self, params, mocker, stage, stages_configured_for_both, op, fake_base_exception
+            self, params, mocker, stage, stages_configured_for_both, op, fake_base_exception
     ):
         stage.next._execute_op = mocker.Mock(side_effect=fake_base_exception)
         with pytest.raises(UnhandledException):
@@ -455,6 +473,15 @@ publish_ops = [
         "op_class": pipeline_ops_iothub.SendD2CMessageOperation,
         "op_init_kwargs": {"message": Message(fake_message_body, content_type=fake_content_type)},
         "topic": "devices/{}/messages/events/{}".format(fake_device_id, fake_content_type_encoded),
+        "publish_payload": fake_message_body,
+    },
+    {
+        "name": "send security message",
+        "stage_type": "device",
+        "op_class": pipeline_ops_iothub.SendD2CMessageOperation,
+        "op_init_kwargs": {"message": create_security_message(fake_message_body)},
+        "topic": "devices/{}/messages/events/{}&{}".format(
+            fake_device_id, fake_content_type_encoded, security_message_interface_id_encoded),
         "publish_payload": fake_message_body,
     },
     {
@@ -538,6 +565,34 @@ publish_ops = [
             fake_device_id,
             fake_message_id_encoded,
             fake_content_type_encoded,
+            fake_message_user_property_2_encoded,
+            fake_message_user_property_1_encoded,
+        ),
+        "publish_payload": fake_message_body,
+    },
+    {
+        "name": "send security message with multiple system and multiple user properties",
+        "stage_type": "device",
+        "op_class": pipeline_ops_iothub.SendD2CMessageOperation,
+        "op_init_kwargs": {
+            "message": create_security_message_with_system_and_user_properties(
+                fake_message_body, is_multiple=True
+            )
+        },
+        # For more than 1 user property the order could be different, creating 2 different topics
+        "topic1": "devices/{}/messages/events/{}&{}&{}&{}&{}".format(
+            fake_device_id,
+            fake_message_id_encoded,
+            fake_content_type_encoded,
+            security_message_interface_id_encoded,
+            fake_message_user_property_1_encoded,
+            fake_message_user_property_2_encoded,
+        ),
+        "topic2": "devices/{}/messages/events/{}&{}&{}&{}&{}".format(
+            fake_device_id,
+            fake_message_id_encoded,
+            fake_content_type_encoded,
+            security_message_interface_id_encoded,
             fake_message_user_property_2_encoded,
             fake_message_user_property_1_encoded,
         ),
@@ -709,7 +764,7 @@ class TestIoTHubMQTTConverterWithEnableFeature(object):
     )
     @pytest.mark.it("Converts the feature_name to the correct topic")
     def test_converts_feature_name_to_topic(
-        self, mocker, stage, stages_configured_for_both, topic_parameters, op_parameters
+            self, mocker, stage, stages_configured_for_both, topic_parameters, op_parameters
     ):
         if topic_parameters["stage_type"] == "device" and stage.module_id:
             pytest.skip()
@@ -729,7 +784,7 @@ class TestIoTHubMQTTConverterWithEnableFeature(object):
         ids=[x["op_class"].__name__ for x in sub_unsub_operations],
     )
     def test_fails_on_invalid_feature_name(
-        self, mocker, stage, stages_configured_for_both, op_parameters, callback
+            self, mocker, stage, stages_configured_for_both, op_parameters, callback
     ):
         op = op_parameters["op_class"](feature_name=invalid_feature_name, callback=callback)
         callback.reset_mock()
@@ -754,7 +809,7 @@ def add_pipeline_root(stage, mocker):
 class TestIoTHubMQTTConverterHandlePipelineEvent(object):
     @pytest.mark.it("Passes up any mqtt messages with topics that aren't matched by this stage")
     def test_passes_up_mqtt_message_with_unknown_topic(
-        self, stage, stages_configured_for_both, add_pipeline_root, mocker
+            self, stage, stages_configured_for_both, add_pipeline_root, mocker
     ):
         event = pipeline_events_mqtt.IncomingMQTTMessageEvent(
             topic=unmatched_mqtt_topic, payload=fake_mqtt_payload
@@ -779,7 +834,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventC2D(object):
         "Converts mqtt message with topic devices/device_id/message/devicebound/ to c2d event"
     )
     def test_converts_c2d_topic_to_c2d_events(
-        self, mocker, stage, stage_configured_for_device, add_pipeline_root, c2d_event
+            self, mocker, stage, stage_configured_for_device, add_pipeline_root, c2d_event
     ):
         stage.handle_pipeline_event(c2d_event)
         assert stage.previous.handle_pipeline_event.call_count == 1
@@ -788,7 +843,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventC2D(object):
 
     @pytest.mark.it("Convers the mqtt payload of a c2d message into a Message object")
     def test_creates_message_object_for_c2d_event(
-        self, mocker, stage, stage_configured_for_device, add_pipeline_root, c2d_event
+            self, mocker, stage, stage_configured_for_device, add_pipeline_root, c2d_event
     ):
         stage.handle_pipeline_event(c2d_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -796,7 +851,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventC2D(object):
 
     @pytest.mark.it("Extracts message properties from the mqtt topic for c2d messages")
     def test_extracts_c2d_message_properties_from_topic_name(
-        self, mocker, stage, stage_configured_for_device, add_pipeline_root
+            self, mocker, stage, stage_configured_for_device, add_pipeline_root
     ):
         event = pipeline_events_mqtt.IncomingMQTTMessageEvent(
             topic=fake_c2d_topic_with_content_type, payload=fake_mqtt_payload
@@ -807,7 +862,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventC2D(object):
 
     @pytest.mark.it("Passes up c2d messages destined for another device")
     def test_if_topic_is_c2d_for_another_device(
-        self, mocker, stage, stage_configured_for_device, add_pipeline_root
+            self, mocker, stage, stage_configured_for_device, add_pipeline_root
     ):
         event = pipeline_events_mqtt.IncomingMQTTMessageEvent(
             topic=fake_c2d_topic_for_another_device, payload=fake_mqtt_payload
@@ -845,13 +900,13 @@ class TestIotHubMQTTConverterWithSendIotRequest(object):
 
     @pytest.fixture
     def op(
-        self,
-        fake_request_type,
-        fake_method,
-        fake_resource_location,
-        fake_request_body,
-        fake_request_id,
-        callback,
+            self,
+            fake_request_type,
+            fake_method,
+            fake_resource_location,
+            fake_request_body,
+            fake_request_id,
+            callback,
     ):
         return pipeline_ops_base.SendIotRequestOperation(
             request_type=fake_request_type,
@@ -874,7 +929,7 @@ class TestIotHubMQTTConverterWithSendIotRequest(object):
         "Runs an MQTTPublishOperation on the next stage with the topic formated as '$iothub/twin/{method}{resource_location}?$rid={request_id}' and the payload as the request_body"
     )
     def test_sends_new_operation(
-        self, stage, op, fake_method, fake_resource_location, fake_request_id, fake_request_body
+            self, stage, op, fake_method, fake_resource_location, fake_request_id, fake_request_body
     ):
         stage.run_op(op)
         assert stage.next.run_op.call_count == 1
@@ -946,7 +1001,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventInputMessages(object):
         "Converts mqtt message with topic devices/device_id/modules/module_id/inputs/input_name/ to input event"
     )
     def test_converts_input_topic_to_input_event(
-        self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
+            self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
     ):
         stage.handle_pipeline_event(input_message_event)
         assert stage.previous.handle_pipeline_event.call_count == 1
@@ -955,7 +1010,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventInputMessages(object):
 
     @pytest.mark.it("Converts the mqtt payload of an input message into a Message object")
     def test_creates_message_object_for_input_event(
-        self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
+            self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
     ):
         stage.handle_pipeline_event(input_message_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -963,7 +1018,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventInputMessages(object):
 
     @pytest.mark.it("Extracts the input name of an input message from the mqtt topic")
     def test_extracts_input_name_from_topic(
-        self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
+            self, mocker, stage, stage_configured_for_module, add_pipeline_root, input_message_event
     ):
         stage.handle_pipeline_event(input_message_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -971,7 +1026,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventInputMessages(object):
 
     @pytest.mark.it("Extracts message properties from the mqtt topic for input messages")
     def test_extracts_input_message_properties_from_topic_name(
-        self, mocker, stage, stage_configured_for_module, add_pipeline_root
+            self, mocker, stage, stage_configured_for_module, add_pipeline_root
     ):
         event = pipeline_events_mqtt.IncomingMQTTMessageEvent(
             topic=fake_input_message_topic_with_content_type, payload=fake_mqtt_payload
@@ -987,7 +1042,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventInputMessages(object):
     )
     @pytest.mark.it("Passes up input messages destined for another module")
     def test_if_topic_is_input_message_for_another_module(
-        self, mocker, stage, stage_configured_for_module, add_pipeline_root, topic
+            self, mocker, stage, stage_configured_for_module, add_pipeline_root, topic
     ):
         event = pipeline_events_mqtt.IncomingMQTTMessageEvent(
             topic=topic, payload=fake_mqtt_payload
@@ -1012,7 +1067,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventMethodRequets(object):
         "Converts mqtt messages with topic $iothub/methods/POST/{method name}/?$rid={request id} to method request events"
     )
     def test_converts_method_request_topic_to_method_request_event(
-        self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
+            self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
     ):
         stage.handle_pipeline_event(method_request_event)
         assert stage.previous.handle_pipeline_event.call_count == 1
@@ -1021,7 +1076,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventMethodRequets(object):
 
     @pytest.mark.it("Makes a MethodRequest object to hold the method request details")
     def test_passes_method_request_object_in_method_request_event(
-        self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
+            self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
     ):
         stage.handle_pipeline_event(method_request_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -1029,7 +1084,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventMethodRequets(object):
 
     @pytest.mark.it("Extracts the method name from the mqtt topic")
     def test_extracts_method_name_from_method_request_topic(
-        self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
+            self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
     ):
         stage.handle_pipeline_event(method_request_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -1037,7 +1092,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventMethodRequets(object):
 
     @pytest.mark.it("Extracts the request id from the mqtt topic")
     def test_extracts_request_id_from_method_request_topic(
-        self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
+            self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
     ):
         stage.handle_pipeline_event(method_request_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -1047,7 +1102,7 @@ class TestIoTHubMQTTConverterHandlePipelineEventMethodRequets(object):
         "Puts the payload of the mqtt message as the payload of the method requets object"
     )
     def test_puts_mqtt_payload_in_method_request_payload(
-        self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
+            self, mocker, stage, stages_configured_for_both, add_pipeline_root, method_request_event
     ):
         stage.handle_pipeline_event(method_request_event)
         new_event = stage.previous.handle_pipeline_event.call_args[0][0]
@@ -1112,13 +1167,13 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinResponse(object):
         "Calls .handle_pipeline_event() on the previous stage with an IotResponseEvent, with request_id and status_code as attributes extracted from the topic and the response_body attirbute set to the payload"
     )
     def test_extracts_request_id_status_code_and_payload(
-        self,
-        stage,
-        fixup_stage_for_test,
-        fake_request_id,
-        fake_status_code,
-        fake_payload,
-        fake_event,
+            self,
+            stage,
+            fixup_stage_for_test,
+            fake_request_id,
+            fake_status_code,
+            fake_payload,
+            fake_event,
     ):
         stage.handle_pipeline_event(event=fake_event)
         assert stage.previous.handle_pipeline_event.call_count == 1
@@ -1130,7 +1185,7 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinResponse(object):
 
     @pytest.mark.it("Calls the unhandled exception handler if there is no previous stage")
     def test_no_previous_stage(
-        self, stage, fixup_stage_for_test, fake_event, unhandled_error_handler
+            self, stage, fixup_stage_for_test, fake_event, unhandled_error_handler
     ):
         stage.previous = None
         stage.handle_pipeline_event(fake_event)
@@ -1141,12 +1196,12 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinResponse(object):
         "Calls the unhandled exception handler if the requet_id is missing from the topic name"
     )
     def test_invalid_topic_with_missing_request_id(
-        self,
-        stage,
-        fixup_stage_for_test,
-        fake_event,
-        fake_topic_name_with_missing_request_id,
-        unhandled_error_handler,
+            self,
+            stage,
+            fixup_stage_for_test,
+            fake_event,
+            fake_topic_name_with_missing_request_id,
+            unhandled_error_handler,
     ):
         fake_event.topic = fake_topic_name_with_missing_request_id
         stage.handle_pipeline_event(event=fake_event)
@@ -1157,12 +1212,12 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinResponse(object):
         "Calls the unhandled exception handler if the status code is missing from the topic name"
     )
     def test_invlid_topic_with_missing_status_code(
-        self,
-        stage,
-        fixup_stage_for_test,
-        fake_event,
-        fake_topic_name_with_missing_status_code,
-        unhandled_error_handler,
+            self,
+            stage,
+            fixup_stage_for_test,
+            fake_event,
+            fake_topic_name_with_missing_status_code,
+            unhandled_error_handler,
     ):
         fake_event.topic = fake_topic_name_with_missing_status_code
         stage.handle_pipeline_event(event=fake_event)
@@ -1173,12 +1228,12 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinResponse(object):
         "Calls the unhandled exception handler if the status code in the topic name is not numeric"
     )
     def test_invlid_topic_with_bad_status_code(
-        self,
-        stage,
-        fixup_stage_for_test,
-        fake_event,
-        fake_topic_name_with_bad_status_code,
-        unhandled_error_handler,
+            self,
+            stage,
+            fixup_stage_for_test,
+            fake_event,
+            fake_topic_name_with_bad_status_code,
+            unhandled_error_handler,
     ):
         fake_event.topic = fake_topic_name_with_bad_status_code
         stage.handle_pipeline_event(event=fake_event)
@@ -1234,7 +1289,7 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinPatch(object):
 
     @pytest.mark.it("Calls the unhandled exception handler if there is no previous stage")
     def test_no_previous_stage(
-        self, stage, fixup_stage_for_test, fake_event, unhandled_error_handler
+            self, stage, fixup_stage_for_test, fake_event, unhandled_error_handler
     ):
         stage.previous = None
         stage.handle_pipeline_event(fake_event)
@@ -1243,14 +1298,14 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinPatch(object):
 
     @pytest.mark.it("Calls the unhandled exception handler if the payload is not a Bytes object")
     def test_payload_not_bytes(
-        self, stage, fixup_stage_for_test, fake_event, fake_patch_not_bytes, unhandled_error_handler
+            self, stage, fixup_stage_for_test, fake_event, fake_patch_not_bytes, unhandled_error_handler
     ):
         fake_event.payload = fake_patch_not_bytes
         stage.handle_pipeline_event(fake_event)
         assert unhandled_error_handler.call_count == 1
         if not (
-            isinstance(unhandled_error_handler.call_args[0][0], AttributeError)
-            or isinstance(unhandled_error_handler.call_args[0][0], ValueError)
+                isinstance(unhandled_error_handler.call_args[0][0], AttributeError)
+                or isinstance(unhandled_error_handler.call_args[0][0], ValueError)
         ):
             assert False
 
@@ -1258,7 +1313,7 @@ class TestIotHubMQTTConverterHandlePipelineEventTwinPatch(object):
         "Calls the unhandled exception handler if the payload cannot be deserialized as a JSON object"
     )
     def test_payload_not_json(
-        self, stage, fixup_stage_for_test, fake_event, fake_patch_not_json, unhandled_error_handler
+            self, stage, fixup_stage_for_test, fake_event, fake_patch_not_json, unhandled_error_handler
     ):
         fake_event.payload = fake_patch_not_json
         stage.handle_pipeline_event(fake_event)
