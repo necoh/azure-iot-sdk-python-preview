@@ -29,7 +29,7 @@ class Message(object):
     """
 
     def __init__(
-            self, data, message_id=None, content_encoding=None, content_type=None, output_name=None
+        self, data, message_id=None, content_encoding=None, content_type=None, output_name=None
     ):
         """
         Initializer for Message
