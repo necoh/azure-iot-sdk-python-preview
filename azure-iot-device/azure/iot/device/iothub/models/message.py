@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 """This module contains a class representing messages that are sent or received.
 """
+SECURITY_MESSAGE_INTERFACE_ID = "urn:azureiot:Security:SecurityAgent:1"
 
 
 # TODO: Revise this class. Does all of this REALLY need to be here?
@@ -53,6 +54,10 @@ class Message(object):
         self.content_encoding = content_encoding
         self.content_type = content_type
         self.output_name = output_name
+        self.iothub_interface_id = None
+
+    def set_as_security_message(self):
+        self.iothub_interface_id = SECURITY_MESSAGE_INTERFACE_ID
 
     def __str__(self):
         return str(self.data)
