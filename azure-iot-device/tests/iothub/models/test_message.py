@@ -7,7 +7,7 @@
 import pytest
 import logging
 from azure.iot.device.iothub.models import Message
-import azure.iot.device.iothub.models.message as message
+from iot.device import constant
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,7 +51,7 @@ class TestMessage(object):
         msg = Message(s, None, encoding, ctype)
         assert msg.iothub_interface_id is None
         msg.set_as_security_message()
-        assert msg.iothub_interface_id == message.SECURITY_MESSAGE_INTERFACE_ID
+        assert msg.iothub_interface_id == constant.SECURITY_MESSAGE_INTERFACE_ID
 
     @pytest.mark.it(
         "Uses string representation of data/payload attribute as string representation of Message"
