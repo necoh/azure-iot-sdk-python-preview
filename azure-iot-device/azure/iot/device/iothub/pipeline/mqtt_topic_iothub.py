@@ -205,8 +205,6 @@ def extract_properties_from_topic(topic, message_received):
                 message_received.content_type = value
             elif key == "$.ce":
                 message_received.content_encoding = value
-            elif key == "$.ifid":
-                message_received.iothub_interface_id = value
             else:
                 message_received.custom_properties[key] = value
 

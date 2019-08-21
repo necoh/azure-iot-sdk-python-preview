@@ -54,10 +54,14 @@ class Message(object):
         self.content_encoding = content_encoding
         self.content_type = content_type
         self.output_name = output_name
-        self.iothub_interface_id = None
+        self._iothub_interface_id = None
+
+    @property
+    def iothub_interface_id(self):
+        return self._iothub_interface_id
 
     def set_as_security_message(self):
-        self.iothub_interface_id = constant.SECURITY_MESSAGE_INTERFACE_ID
+        self._iothub_interface_id = constant.SECURITY_MESSAGE_INTERFACE_ID
 
     def __str__(self):
         return str(self.data)
